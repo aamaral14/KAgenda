@@ -119,6 +119,24 @@ sudo pacman -S python-google-auth-oauthlib python-google-api-python-client pytho
 
 ## Building the Project
 
+### Quick Build and Install
+
+The easiest way to build and install the widget is to use the provided build script:
+
+```bash
+./build.sh
+```
+
+This script will:
+- Build the C++ plugin (if source files exist)
+- Install all widget files to `~/.local/share/plasma/plasmoids/com.github.kagenda/`
+- Set up the OAuth helper script
+- Provide next steps for configuration
+
+### Manual Build (if C++ plugin exists)
+
+If you have C++ source files and want to build manually:
+
 1. **Create a build directory:**
    ```bash
    mkdir build
@@ -127,34 +145,38 @@ sudo pacman -S python-google-auth-oauthlib python-google-api-python-client pytho
 
 2. **Configure the project with CMake:**
    ```bash
-   cmake ..
-   ```
-   
-   Or for a specific build type:
-   ```bash
-   cmake -DCMAKE_BUILD_TYPE=Release ..
+   cmake .. -DCMAKE_BUILD_TYPE=Release
    ```
 
 3. **Build the project:**
    ```bash
-   make
-   ```
-   
-   Or using multiple cores for faster compilation:
-   ```bash
-   make -j$(nproc)
+   cmake --build . -j$(nproc)
    ```
 
-4. **Install the plugin:**
-   ```bash
-   sudo make install
-   ```
-   
-   Or use the provided install script:
+4. **Install using the build script:**
    ```bash
    cd ..
-   ./install.sh
+   ./build.sh
    ```
+
+### Creating a Distribution Package
+
+To create an installable archive for distribution:
+
+```bash
+./package.sh
+```
+
+This creates:
+- `kagenda-1.0.0.tar.gz` - Source package
+- `kagenda-1.0.0.zip` - Alternative format
+
+To install from package:
+```bash
+tar -xzf kagenda-1.0.0.tar.gz
+cd kagenda-1.0.0
+./build.sh
+```
 
 ## Installation
 
@@ -165,7 +187,7 @@ After building, you can install the widget using the provided script:
 ```
 
 This will:
-- Copy the widget files to `~/.local/share/plasma/plasmoids/com.github.gmailcalendar/`
+- Copy the widget files to `~/.local/share/plasma/plasmoids/com.github.kagenda/`
 - Make the OAuth helper script executable
 - Set up the necessary directory structure
 
@@ -208,7 +230,7 @@ You can authenticate in two ways:
 If you prefer to authenticate manually, run the OAuth helper script:
 
 ```bash
-python3 ~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py
+python3 ~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py
 ```
 
 Or use the provided helper script from the project directory:
@@ -237,7 +259,7 @@ This will:
    
    Or test it with plasmoidviewer:
    ```bash
-   plasmoidviewer -a com.github.gmailcalendar
+   plasmoidviewer -a com.github.kagenda
    ```
 
 3. **Configure the widget:**
@@ -261,13 +283,13 @@ The widget uses a Python-based OAuth helper (`oauth-helper.py`) that:
 
 1. **When called from the widget UI:**
    - The QML code executes the Python script directly using Plasma's executable engine
-   - The script path is: `~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py`
+   - The script path is: `~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py`
    - The script automatically opens your browser for authentication
    - After authentication, it saves the token and outputs calendar list JSON
 
 2. **When called manually:**
    - You can run `./run-oauth-helper.sh` from the project directory
-   - Or run the Python script directly: `python3 ~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py`
+   - Or run the Python script directly: `python3 ~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py`
    - Both methods perform the same authentication flow
 
 The authentication token is automatically saved to both:
@@ -287,7 +309,7 @@ Once configured, the widget will:
 
 **Widget doesn't appear:**
 - Make sure you've restarted the Plasma shell
-- Check that the widget is installed in `~/.local/share/plasma/plasmoids/com.github.gmailcalendar/`
+- Check that the widget is installed in `~/.local/share/plasma/plasmoids/com.github.kagenda/`
 
 **Authentication fails:**
 - Verify `credentials.json` is in `~/.config/kagenda/`
@@ -298,7 +320,7 @@ Once configured, the widget will:
 
 **Calendar list is empty:**
 - Click "Authenticate with Google" again in the widget configuration to refresh the token
-- Or manually run: `python3 ~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py`
+- Or manually run: `python3 ~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py`
 - Check that you have calendars in your Google Calendar account
 - Verify the access token is valid and not expired
 

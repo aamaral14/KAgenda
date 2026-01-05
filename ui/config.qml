@@ -37,7 +37,7 @@ KCM.SimpleKCM {
         }
         
         PlasmaComponents.Label {
-            text: "python3 ~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py"
+            text: "python3 ~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
             font.family: "monospace"
             color: "#808080"
         }

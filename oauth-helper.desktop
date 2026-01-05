@@ -2,7 +2,7 @@
 Version=1.0
 Type=Application
 Name=Gmail Calendar OAuth Helper
-Exec=sh -c "python3 \\$HOME/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py"
+Exec=sh -c "python3 \\$HOME/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
 Terminal=false
 NoDisplay=true
 StartupNotify=false

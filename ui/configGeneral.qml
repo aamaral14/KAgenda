@@ -36,7 +36,7 @@ Kirigami.FormLayout {
     }
     
     QQC2.Label {
-        text: "Step 1: Run OAuth helper:\npython3 ~/.local/share/plasma/plasmoids/com.github.gmailcalendar/oauth-helper.py\n\nStep 2: Paste the access token above\nStep 3: Enter your calendar ID"
+        text: "Step 1: Run OAuth helper:\npython3 ~/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py\n\nStep 2: Paste the access token above\nStep 3: Enter your calendar ID"
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
