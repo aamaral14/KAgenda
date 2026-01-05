@@ -1,0 +1,145 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Compiled binaries and libraries
+*.so
+*.so.*
+*.a
+*.lib
+*.dll
+*.dylib
+
+# Object files
+*.o
+*.obj
+*.ko
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.dylib
+*.so
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+*.egg
+
+# User-specific configuration files (contain sensitive data)
+*.json
+!metadata.json
+!package.json
+credentials.json
+token.json
+config.json
+oauth-output.json
+oauth-status.txt
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+
+# Qt Creator
+*.autosave
+*.creator.user*
+
+# KDevelop
+.kdev4/
+*.kdev4
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.backup
+*.orig
+
+# Coverage reports
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# Valgrind
+*.memcheck
+*.helgrind
+*.cachegrind
+*.callgrind
+*.massif
+
+# QML cache
+.qmlc/
+*.qmlc
+
+# MOC generated files (if in source tree)
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Autotools
+Makefile.in
+aclocal.m4
+autom4te.cache/
+config.h
+config.h.in
+config.log
+config.status
+configure
+libtool
+stamp-h1
+
+# Testing
+*.test
+test-results/
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+*.7z
+
