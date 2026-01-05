@@ -2,6 +2,8 @@
 
 A KDE Plasma widget that displays Google Calendar events for the next 7 days.
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N41RQDPR)
+
 ## Introduction
 
 KAgenda is a modern, lightweight widget for KDE Plasma 6 that brings your Google Calendar directly to your desktop. Stay organized and never miss an important event with a beautiful, integrated calendar view that shows your upcoming events at a glance.
