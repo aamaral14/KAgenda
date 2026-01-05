@@ -1,0 +1,6 @@
+/home/alex/.local/share/qml/com/github/gmailcalendar/gmailcalendarplugin.so.1.0.0
+/home/alex/.local/share/qml/com/github/gmailcalendar/gmailcalendarplugin.so
+/home/alex/.local/share/qml/com/github/gmailcalendar/qmldir
+/home/alex/.local/share/plasma/plasmoids/com.github.gmailcalendar/contents/ui/main.qml
+/home/alex/.local/share/plasma/plasmoids/com.github.gmailcalendar/metadata.json
+/home/alex/.local/share/plasma/plasmoids/com.github.gmailcalendar/contents/config/main.xml

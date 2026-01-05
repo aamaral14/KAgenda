@@ -1,0 +1,20 @@
+[Desktop Entry]
+Name=KAgenda
+Comment=Display Google Calendar events for the next 7 days
+Icon=view-calendar
+Type=Service
+ServiceTypes=Plasma/Applet
+X-Plasma-API=declarativeappletscript
+X-Plasma-API-Minimum-Version=6.0
+X-Plasma-MainScript=contents/ui/main.qml
+X-Plasma-ConfigFile=contents/ui/config.qml
+X-KDE-PluginInfo-Author=Alex
+X-KDE-PluginInfo-Email=
+X-KDE-PluginInfo-Name=com.github.gmailcalendar
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-Website=
+X-KDE-PluginInfo-Category=Date and Time
+X-KDE-PluginInfo-Depends=
+X-KDE-PluginInfo-License=GPL
+X-KDE-PluginInfo-EnabledByDefault=true
+

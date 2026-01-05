@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPlugin": {
+        "Id": "com.github.gmailcalendar",
+        "Name": "KAgenda",
+        "Description": "Display Google Calendar events for the next 7 days",
+        "Version": "1.0",
+        "Authors": [
+            {
+                "Name": "Alex",
+                "Email": ""
+            }
+        ],
+        "Website": "",
+        "Category": "Date and Time",
+        "License": "GPL",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-ConfigFile": "config/config.qml"
+}
+

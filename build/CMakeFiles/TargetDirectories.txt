@@ -1,0 +1,9 @@
+/home/alex/agenda-app/build/CMakeFiles/gmailcalendarplugin.dir
+/home/alex/agenda-app/build/CMakeFiles/edit_cache.dir
+/home/alex/agenda-app/build/CMakeFiles/rebuild_cache.dir
+/home/alex/agenda-app/build/CMakeFiles/list_install_components.dir
+/home/alex/agenda-app/build/CMakeFiles/install.dir
+/home/alex/agenda-app/build/CMakeFiles/install/local.dir
+/home/alex/agenda-app/build/CMakeFiles/install/strip.dir
+/home/alex/agenda-app/build/CMakeFiles/gmailcalendarplugin_autogen_timestamp_deps.dir
+/home/alex/agenda-app/build/CMakeFiles/gmailcalendarplugin_autogen.dir
