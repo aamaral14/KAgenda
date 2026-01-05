@@ -17,12 +17,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
+      actions: read
+      
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        fetch-tags: true
       
     - name: Extract version
       id: version
@@ -65,6 +69,19 @@ jobs:
         name: kagenda-plasmoid
         path: kagenda.plasmoid
         retention-days: 30
+        
+    - name: Create tag (if workflow_dispatch)
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        TAG="${{ steps.version.outputs.version }}"
+        if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+        else
+          echo "Tag $TAG already exists"
+        fi
         
     - name: Generate release notes
       id: release_notes
