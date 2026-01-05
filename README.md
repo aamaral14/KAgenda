@@ -77,12 +77,6 @@ killall plasmashell && kstart plasmashell
    - Search for "KAgenda"
    - Click to add it
 
-2. **Configure the widget:**
-   - Click the configure button on the widget (or right-click > Configure)
-   - Click "Authenticate with Google" button
-   - Complete authentication in your browser
-   - Select your calendar from the dropdown
-
 ## Usage
 
 Once configured, the widget will:
@@ -92,10 +86,6 @@ Once configured, the widget will:
 - Allow you to change the calendar selection through the configuration dialog
 
 ## Troubleshooting
-
-**Widget doesn't appear:**
-- Make sure you've restarted the Plasma shell
-- Check that the widget is installed in `~/.local/share/plasma/plasmoids/com.github.kagenda/`
 
 **Authentication fails:**
 - Verify `credentials.json` is in `~/.config/kagenda/`
