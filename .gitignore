@@ -142,4 +142,5 @@ test-results/
 *.tar.gz
 *.zip
 *.7z
+*.plasmoid
 

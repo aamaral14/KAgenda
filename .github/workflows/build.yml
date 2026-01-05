@@ -1,0 +1,54 @@
+name: Build and Package
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Make scripts executable
+      run: |
+        chmod +x create-plasmoid.sh
+        chmod +x build.sh || true
+        chmod +x install.sh || true
+      
+    - name: Create .plasmoid package
+      run: |
+        ./create-plasmoid.sh
+        
+    - name: Verify .plasmoid file
+      run: |
+        if [ ! -f kagenda.plasmoid ]; then
+          echo "ERROR: .plasmoid file was not created!"
+          exit 1
+        fi
+        echo "✓ .plasmoid file created successfully"
+        ls -lh kagenda.plasmoid
+        unzip -l kagenda.plasmoid | head -20
+        
+    - name: Upload .plasmoid artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: kagenda-plasmoid
+        path: kagenda.plasmoid
+        retention-days: 30
+        
+    - name: Create release asset (on tag)
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: kagenda.plasmoid
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
