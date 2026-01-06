@@ -275,12 +275,9 @@ PlasmoidItem {
                             plasmoid.configuration.accessToken = config.access_token
                             console.log("Access token loaded and saved to configuration:", config.access_token.substring(0, 20) + "...")
                             
-                            // If we have a calendar ID, refresh events immediately
-                            if (cfg_calendarId && cfg_calendarId.length > 0) {
-                                Qt.callLater(function() {
-                                    root.refreshEvents()
-                                })
-                            }
+                            // Wait a moment for the property binding to update, then check if we can refresh events
+                            // Use a timer to ensure cfg_accessToken property has updated
+                            tokenLoadedTimer.start()
                         } else {
                             console.log("No access_token found in config file")
                         }
@@ -791,40 +788,97 @@ PlasmoidItem {
     }
     
     Component.onCompleted: {
-        // First, try to load access token from config file (persists across restarts)
-        // This will read ~/.config/kagenda/config.json and load the access_token
-        loadAccessTokenFromConfig()
+        console.log("Component.onCompleted: Starting initialization...")
+        console.log("Current cfg_accessToken:", cfg_accessToken ? cfg_accessToken.substring(0, 20) + "..." : "empty")
+        console.log("Current cfg_calendarId:", cfg_calendarId || "empty")
+        console.log("Current plasmoid.configuration.accessToken:", plasmoid.configuration.accessToken ? plasmoid.configuration.accessToken.substring(0, 20) + "..." : "empty")
+        console.log("Current plasmoid.configuration.calendarId:", plasmoid.configuration.calendarId || "empty")
         
-        // Use a timer to wait for the config file to be read asynchronously
-        // Then check if we have configuration
-        Qt.callLater(function() {
-            // Give configReader time to load the token (it's async)
-            startupTimer.start()
-        })
+        // First, check if we already have configuration saved (from previous session)
+        // Plasma configuration persists across restarts, so check that first
+        var hasToken = plasmoid.configuration.accessToken && plasmoid.configuration.accessToken.length > 0
+        var hasCalendar = plasmoid.configuration.calendarId && plasmoid.configuration.calendarId.length > 0
+        
+        if (hasToken && hasCalendar) {
+            console.log("Found saved configuration, refreshing events immediately...")
+            statusText = "Loading events..."
+            // Use a small delay to ensure everything is initialized
+            Qt.callLater(function() {
+                refreshEvents()
+            })
+        } else {
+            // No saved configuration, try to load from config file
+            console.log("No saved configuration found, loading from config file...")
+            loadAccessTokenFromConfig()
+            
+            // Use a timer to wait for the config file to be read asynchronously
+            // Then check if we have configuration
+            Qt.callLater(function() {
+                // Give configReader time to load the token (it's async)
+                startupTimer.start()
+            })
+        }
     }
     
     // Timer to check configuration after startup token load
     Timer {
         id: startupTimer
-        interval: 500
+        interval: 1500
         repeat: false
         onTriggered: {
+            console.log("startupTimer triggered")
             // Check if we have configuration (token might have been loaded from config file)
-            if (cfg_accessToken && cfg_calendarId) {
+            // Use plasmoid.configuration directly for more reliable checking
+            var hasToken = plasmoid.configuration.accessToken && plasmoid.configuration.accessToken.length > 0
+            var hasCalendar = plasmoid.configuration.calendarId && plasmoid.configuration.calendarId.length > 0
+            
+            console.log("startupTimer: hasToken:", hasToken, "hasCalendar:", hasCalendar)
+            
+            if (hasToken && hasCalendar) {
+                console.log("startupTimer: Both token and calendar found, refreshing events...")
                 statusText = "Loading events..."
                 refreshEvents()
-            } else if (cfg_accessToken && !cfg_calendarId) {
+            } else if (hasToken && !hasCalendar) {
                 // We have token but no calendar selected - open config to select calendar
+                console.log("startupTimer: Token found but no calendar selected")
                 statusText = "Please select a calendar"
                 Qt.callLater(function() {
                     root.showConfigModal = true
                 })
             } else {
+                console.log("startupTimer: No configuration found")
                 statusText = "Please configure the widget"
                 // Open configuration popup automatically if not authenticated
                 Qt.callLater(function() {
                     root.showConfigModal = true
                 })
+            }
+        }
+    }
+    
+    // Timer to refresh events after token is loaded from config file
+    Timer {
+        id: tokenLoadedTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            console.log("tokenLoadedTimer triggered")
+            // Check if we have both token and calendar ID after loading token from config
+            // Use plasmoid.configuration directly to avoid timing issues with property bindings
+            var hasToken = plasmoid.configuration.accessToken && plasmoid.configuration.accessToken.length > 0
+            var hasCalendar = plasmoid.configuration.calendarId && plasmoid.configuration.calendarId.length > 0
+            
+            console.log("tokenLoadedTimer: hasToken:", hasToken, "hasCalendar:", hasCalendar)
+            
+            if (hasToken && hasCalendar) {
+                console.log("tokenLoadedTimer: Both token and calendar found, refreshing events...")
+                statusText = "Loading events..."
+                refreshEvents()
+            } else if (hasToken && !hasCalendar) {
+                console.log("tokenLoadedTimer: Token loaded but no calendar selected")
+                statusText = "Please select a calendar"
+            } else {
+                console.log("tokenLoadedTimer: Token or calendar missing")
             }
         }
     }
