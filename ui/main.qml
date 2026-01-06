@@ -245,7 +245,10 @@ PlasmoidItem {
                     
                     // Status text removed - no longer displayed
                 } else if (request.status === 401) {
-                    statusText = "Authentication expired. Please re-authenticate."
+                    statusText = "Authentication expired. Refreshing token..."
+                    // Token expired - try to refresh by running OAuth helper
+                    // The Python script will automatically refresh if refresh_token exists
+                    executeOAuthScript()
                 } else {
                     statusText = "Error loading events: " + request.status
                 }
@@ -788,14 +791,37 @@ PlasmoidItem {
     }
     
     Component.onCompleted: {
-        // Check if we have configuration
-        if (cfg_accessToken && cfg_calendarId) {
-            statusText = "Loading events..."
-            refreshEvents()
-        } else {
-            statusText = "Please configure the widget"
-            // Open configuration popup automatically if not authenticated
-            if (!cfg_accessToken) {
+        // First, try to load access token from config file (persists across restarts)
+        // This will read ~/.config/kagenda/config.json and load the access_token
+        loadAccessTokenFromConfig()
+        
+        // Use a timer to wait for the config file to be read asynchronously
+        // Then check if we have configuration
+        Qt.callLater(function() {
+            // Give configReader time to load the token (it's async)
+            startupTimer.start()
+        })
+    }
+    
+    // Timer to check configuration after startup token load
+    Timer {
+        id: startupTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            // Check if we have configuration (token might have been loaded from config file)
+            if (cfg_accessToken && cfg_calendarId) {
+                statusText = "Loading events..."
+                refreshEvents()
+            } else if (cfg_accessToken && !cfg_calendarId) {
+                // We have token but no calendar selected - open config to select calendar
+                statusText = "Please select a calendar"
+                Qt.callLater(function() {
+                    root.showConfigModal = true
+                })
+            } else {
+                statusText = "Please configure the widget"
+                // Open configuration popup automatically if not authenticated
                 Qt.callLater(function() {
                     root.showConfigModal = true
                 })
