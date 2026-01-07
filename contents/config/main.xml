@@ -8,6 +8,33 @@
         <entry name="calendarId" type="String">
             <default></default>
         </entry>
+        <entry name="provider" type="String">
+            <default></default>
+        </entry>
+        <entry name="nextcloudServer" type="String">
+            <default></default>
+        </entry>
+        <entry name="daysToShow" type="Int">
+            <default></default>
+        </entry>
+        <entry name="googleClientId" type="String">
+            <default></default>
+        </entry>
+        <entry name="googleClientSecret" type="String">
+            <default></default>
+        </entry>
+        <entry name="nextcloudClientId" type="String">
+            <default></default>
+        </entry>
+        <entry name="nextcloudClientSecret" type="String">
+            <default></default>
+        </entry>
+        <entry name="nextcloudAuthEndpoint" type="String">
+            <default></default>
+        </entry>
+        <entry name="nextcloudTokenEndpoint" type="String">
+            <default></default>
+        </entry>
     </group>
 </kcfg>
 

@@ -15,6 +15,8 @@ Item {
     
     onVisibleChanged: {
         if (visible) {
+            // Load credentials from configuration when modal opens
+            loadCredentialsFromConfig()
             // Check authentication status when modal becomes visible
             checkAuthenticationStatus()
             // Update days to show value when modal opens
@@ -51,16 +53,15 @@ Item {
     property int nextcloudPort: -1 // Stores the port that will be used for Nextcloud OAuth callback
     property int googlePort: -1 // Stores the port that will be used for Google OAuth callback
 
-    // Google-specific parameters (entered in the popup)
-    property string googleClientId: ""
-    property string googleClientSecret: ""
+    // Google-specific parameters (loaded from configuration)
+    property string googleClientId: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.googleClientId : ""
+    property string googleClientSecret: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.googleClientSecret : ""
 
-    // Nextcloud-specific parameters (entered in the popup)
-    // Default values for debugging
-    property string nextcloudAuthEndpoint: "http://localhost:8080/apps/oauth2/authorize"
-    property string nextcloudTokenEndpoint: "http://localhost:8080/apps/oauth2/api/v1/token"
-    property string nextcloudClientId: "iTX4CegtmoQCzJXrv2TQ7FZuCpHm4RpmXoAFdNhXhwM9dmGa8eGBswzpqLynT2FU"
-    property string nextcloudClientSecret: "RwIyqt0beO9PswDM4iZa2KH5WepHlR1OF2q1q38DtJxJArh3k87xTOpk5mfRcDNP"
+    // Nextcloud-specific parameters (loaded from configuration)
+    property string nextcloudAuthEndpoint: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.nextcloudAuthEndpoint : ""
+    property string nextcloudTokenEndpoint: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.nextcloudTokenEndpoint : ""
+    property string nextcloudClientId: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.nextcloudClientId : ""
+    property string nextcloudClientSecret: plasmoidRef && plasmoidRef.configuration ? plasmoidRef.configuration.nextcloudClientSecret : ""
     
     // Calendar list model
     property var calendarListModel: ListModel { id: calendarListModel }
@@ -85,7 +86,7 @@ Item {
         if (isAuthenticated && !wasAuthenticated) {
             if (currentState === "selectCalendar" || currentState === "authenticating" || currentState === "auth") {
                 currentState = "configured"
-                var provider = selectedProvider || plasmoidRef.configuration.provider || "google"
+                var provider = selectedProvider || plasmoidRef.configuration.provider || ""
                 var calendarId = plasmoidRef.configuration.calendarId || "Unknown"
                 authStatusText = "Authenticated with " + provider + ". Calendar: " + calendarId
             }
@@ -128,13 +129,10 @@ Item {
         checkAuthenticationStatus()
         if (isAuthenticated) {
             currentState = "configured"
-            selectedProvider = plasmoidRef.configuration.provider || "google"
+            selectedProvider = plasmoidRef.configuration.provider || ""
             authStatusText = "Authenticated with " + (selectedProvider === "nextcloud" ? "Nextcloud" : "Google") + ". Calendar: " + (plasmoidRef.configuration.calendarId || "Unknown")
             loadCalendarsFromConfig()
-            // Initialize days to show if not set
-            if (plasmoidRef && plasmoidRef.configuration && !plasmoidRef.configuration.daysToShow) {
-                plasmoidRef.configuration.daysToShow = 7
-            }
+            // Days to show will be loaded from configuration
             // Update SpinBox value after a delay to ensure it's created
             Qt.callLater(function() {
                 if (daysToShowSpinBox) {
@@ -143,11 +141,40 @@ Item {
             })
         } else if (plasmoidRef && plasmoidRef.configuration.accessToken) {
             currentState = "selectCalendar"
-            selectedProvider = plasmoidRef.configuration.provider || "google"
+            selectedProvider = plasmoidRef.configuration.provider || ""
             loadCalendarsFromConfig()
         } else {
             currentState = "auth"
         }
+    }
+    
+    // Function to load credentials from configuration
+    function loadCredentialsFromConfig() {
+        if (!plasmoidRef || !plasmoidRef.configuration) return
+        
+        // Load Google credentials
+        if (plasmoidRef.configuration.googleClientId) {
+            googleClientId = plasmoidRef.configuration.googleClientId
+        }
+        if (plasmoidRef.configuration.googleClientSecret) {
+            googleClientSecret = plasmoidRef.configuration.googleClientSecret
+        }
+        
+        // Load Nextcloud credentials and endpoints
+        if (plasmoidRef.configuration.nextcloudClientId) {
+            nextcloudClientId = plasmoidRef.configuration.nextcloudClientId
+        }
+        if (plasmoidRef.configuration.nextcloudClientSecret) {
+            nextcloudClientSecret = plasmoidRef.configuration.nextcloudClientSecret
+        }
+        if (plasmoidRef.configuration.nextcloudAuthEndpoint) {
+            nextcloudAuthEndpoint = plasmoidRef.configuration.nextcloudAuthEndpoint
+        }
+        if (plasmoidRef.configuration.nextcloudTokenEndpoint) {
+            nextcloudTokenEndpoint = plasmoidRef.configuration.nextcloudTokenEndpoint
+        }
+        
+        console.log("Loaded credentials from configuration")
     }
     
     // Watch for state changes to trigger port scanning
@@ -226,6 +253,13 @@ Item {
             return
         }
         
+        // Save credentials to configuration before authentication
+        if (plasmoidRef && plasmoidRef.configuration) {
+            plasmoidRef.configuration.googleClientId = googleClientId
+            plasmoidRef.configuration.googleClientSecret = googleClientSecret
+            console.log("Saved Google credentials to configuration")
+        }
+        
         if (googlePort < 0) {
             authStatusText = "Port not available. Please try again."
             findAvailablePort()
@@ -264,6 +298,15 @@ Item {
         if (!nextcloudClientId || !nextcloudClientSecret) {
             authStatusText = "Please enter both Client ID and Client Secret"
             return
+        }
+        
+        // Save credentials and endpoints to configuration before authentication
+        if (plasmoidRef && plasmoidRef.configuration) {
+            plasmoidRef.configuration.nextcloudAuthEndpoint = nextcloudAuthEndpoint
+            plasmoidRef.configuration.nextcloudTokenEndpoint = nextcloudTokenEndpoint
+            plasmoidRef.configuration.nextcloudClientId = nextcloudClientId
+            plasmoidRef.configuration.nextcloudClientSecret = nextcloudClientSecret
+            console.log("Saved Nextcloud credentials and endpoints to configuration")
         }
         
         if (nextcloudPort < 0) {
@@ -468,6 +511,15 @@ Item {
         plasmoidRef.configuration.provider = ""
         plasmoidRef.configuration.nextcloudServer = ""
         
+        // Clear credentials (but keep them for convenience - user can still use saved credentials)
+        // If you want to clear credentials on logout, uncomment these lines:
+        // plasmoidRef.configuration.googleClientId = ""
+        // plasmoidRef.configuration.googleClientSecret = ""
+        // plasmoidRef.configuration.nextcloudClientId = ""
+        // plasmoidRef.configuration.nextcloudClientSecret = ""
+        // plasmoidRef.configuration.nextcloudAuthEndpoint = "http://localhost:8080/apps/oauth2/authorize"
+        // plasmoidRef.configuration.nextcloudTokenEndpoint = "http://localhost:8080/apps/oauth2/api/v1/token"
+        
         // Clear models
         calendarListModel.clear()
         calendarsLoading = false // Reset loading flag on logout
@@ -492,12 +544,11 @@ Item {
         authStatusText = "Logged out. Please authenticate again."
         redirectUri = ""
         nextcloudPort = -1
+        googlePort = -1
         
-        // Reset Nextcloud fields
-        nextcloudAuthEndpoint = "http://localhost:8080/apps/oauth2/authorize"
-        nextcloudTokenEndpoint = "http://localhost:8080/apps/oauth2/api/v1/token"
-        nextcloudClientId = ""
-        nextcloudClientSecret = ""
+        // Reload credentials from configuration (they persist, only tokens are cleared)
+        loadCredentialsFromConfig()
+        googlePort = -1
         
         console.log("Logout complete")
     }
@@ -771,12 +822,12 @@ Item {
                                         value = parseInt(savedValue)
                                         console.log("SpinBox loadValue: set value to", value)
                                     } else {
-                                        value = 7
-                                        console.log("SpinBox loadValue: no valid value, using default 7")
+                                        value = 1
+                                        console.log("SpinBox loadValue: no valid value, using minimum 1")
                                     }
                                 } else {
-                                    value = 7
-                                    console.log("SpinBox loadValue: plasmoidRef not available, using default 7")
+                                    value = 1
+                                    console.log("SpinBox loadValue: plasmoidRef not available, using minimum 1")
                                 }
                             }
                             

@@ -32,9 +32,9 @@ PlasmoidItem {
     // Configuration properties - these will be saved/loaded by Plasma
     property string cfg_calendarId: plasmoid.configuration.calendarId || ""
     property string cfg_accessToken: plasmoid.configuration.accessToken || ""
-    property string cfg_provider: plasmoid.configuration.provider || "google"
+    property string cfg_provider: plasmoid.configuration.provider || ""
     property string cfg_nextcloudServer: plasmoid.configuration.nextcloudServer || ""
-    property int cfg_daysToShow: plasmoid.configuration.daysToShow || 7
+    property int cfg_daysToShow: plasmoid.configuration.daysToShow || 0
     
     // Configuration modal
     property bool showConfigModal: false
@@ -123,7 +123,7 @@ PlasmoidItem {
         
         var homeDir = getHomeDir()
         var scriptPath = homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
-        var provider = cfg_provider || "google"
+        var provider = cfg_provider || ""
         
         // Use P5Support.DataSource to execute the Python script
         // The Python script will:
@@ -218,7 +218,7 @@ PlasmoidItem {
         // Use cfg_ properties directly
         var token = cfg_accessToken || ""
         var calId = cfg_calendarId || ""
-        var provider = cfg_provider || "google"
+        var provider = cfg_provider || ""
         
         console.log("refreshEvents called:")
         console.log("  - Calendar ID:", calId)
@@ -234,7 +234,7 @@ PlasmoidItem {
         statusText = "Loading events..."
         
         var now = new Date()
-        var days = cfg_daysToShow || 7
+        var days = cfg_daysToShow || 0
         var later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
         var timeMin = now.toISOString()
         var timeMax = later.toISOString()
