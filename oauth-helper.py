@@ -566,8 +566,9 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
                     sys.stderr.write(f"DEBUG: Calendar {i}: summary='{cal_summary}', id='{cal_id}'\n")
                     sys.stderr.write(f"DEBUG: Calendar {i} raw data keys: {list(cal.keys())}\n")
                     
-                    if not cal_id or len(cal_id) < 1:
-                        sys.stderr.write(f"WARNING: Calendar {i} has invalid ID, skipping\n")
+                    # Skip invalid calendar IDs (including single character invalid IDs)
+                    if not cal_id or len(cal_id) < 1 or cal_id == '<' or cal_id == '>':
+                        sys.stderr.write(f"WARNING: Calendar {i} has invalid ID '{cal_id}', skipping\n")
                         continue
                     
                     calendar_list_items.append({
@@ -576,8 +577,11 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
                         'primary': i == 0
                     })
                 
+                # Sort calendars by summary (name) for consistent ordering, with primary first
+                calendar_list_items.sort(key=lambda x: (not x.get('primary', False), x.get('summary', '').lower()))
+                
                 calendar_list = {'items': calendar_list_items}
-                sys.stderr.write(f"DEBUG: Final calendar list with {len(calendar_list_items)} calendars\n")
+                sys.stderr.write(f"DEBUG: Final calendar list with {len(calendar_list_items)} calendars (after filtering and sorting)\n")
                 print(json.dumps(calendar_list, indent=None, separators=(',', ':')))
             else:
                 raise Exception("No calendars found in API response")
@@ -625,20 +629,42 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
             
             if caldav_response.status_code in [207, 200]:  # 207 Multi-Status is normal for PROPFIND
                 # Parse XML response (simplified - in production use proper XML parser)
-                calendar_ids = re.findall(r'calendars/[^/]+/([^/]+)/', caldav_response.text)
+                # Extract calendar paths and displaynames, matching them by position
+                calendar_paths = re.findall(r'calendars/[^/]+/([^/]+)/', caldav_response.text)
                 displaynames = re.findall(r'<d:displayname>([^<]+)</d:displayname>', caldav_response.text)
                 
-                if calendar_ids:
-                    calendar_list = {
-                        'items': [
-                            {
+                if calendar_paths:
+                    # Create a dictionary to track unique calendars by ID
+                    # Use the first occurrence of each calendar ID to maintain consistency
+                    seen_calendars = {}
+                    calendar_items = []
+                    
+                    for i, cal_id in enumerate(calendar_paths):
+                        # Skip invalid calendar IDs
+                        if not cal_id or len(cal_id) < 1 or cal_id == '<' or cal_id == '>':
+                            sys.stderr.write(f"WARNING: Skipping invalid calendar ID: '{cal_id}'\n")
+                            continue
+                        
+                        # Only add if we haven't seen this ID before (use first occurrence)
+                        if cal_id not in seen_calendars:
+                            displayname = displaynames[i] if i < len(displaynames) else cal_id
+                            # Clean up displayname - remove any invalid characters
+                            displayname = displayname.strip()
+                            if not displayname or displayname == '<' or displayname == '>':
+                                displayname = cal_id
+                            
+                            calendar_items.append({
                                 'id': cal_id,
-                                'summary': displaynames[i] if i < len(displaynames) else cal_id,
-                                'primary': i == 0
-                            }
-                            for i, cal_id in enumerate(set(calendar_ids))
-                        ]
-                    }
+                                'summary': displayname,
+                                'primary': len(calendar_items) == 0  # First valid calendar is primary
+                            })
+                            seen_calendars[cal_id] = True
+                    
+                    # Sort calendars by summary (name) for consistent ordering
+                    calendar_items.sort(key=lambda x: (not x.get('primary', False), x.get('summary', '').lower()))
+                    
+                    calendar_list = {'items': calendar_items}
+                    sys.stderr.write(f"DEBUG: Final calendar list with {len(calendar_items)} calendars (after filtering and sorting)\n")
                     print(json.dumps(calendar_list, indent=None, separators=(',', ':')))
                 else:
                     raise Exception("No calendars found in CalDAV response")

@@ -59,6 +59,7 @@ Item {
     
     // Calendar list model
     property var calendarListModel: ListModel { id: calendarListModel }
+    property bool calendarsLoading: false // Flag to prevent multiple simultaneous loads
     
     // Property to track authentication status
     property bool isAuthenticated: false
@@ -259,6 +260,9 @@ Item {
             
             if (calendarData.items && Array.isArray(calendarData.items)) {
                 console.log("parseCalendarList - Found", calendarData.items.length, "calendars")
+                
+                // First, collect all valid calendars
+                var calendars = []
                 for (var i = 0; i < calendarData.items.length; i++) {
                     var item = calendarData.items[i]
                     console.log("parseCalendarList - Calendar", i, ":", JSON.stringify(item))
@@ -274,13 +278,32 @@ Item {
                     if (item.primary) {
                         displayText += " (Primary)"
                     }
-                    calendarListModel.append({
+                    
+                    calendars.push({
                         id: calendarId,
                         summary: item.summary || item.id,
                         display: displayText,
                         primary: item.primary || false
                     })
-                    console.log("parseCalendarList - Added calendar:", displayText, "with ID:", calendarId)
+                }
+                
+                // Sort calendars by summary (name) for consistent ordering
+                calendars.sort(function(a, b) {
+                    // Primary calendars first
+                    if (a.primary && !b.primary) return -1
+                    if (!a.primary && b.primary) return 1
+                    // Then sort alphabetically by summary
+                    var nameA = (a.summary || "").toLowerCase()
+                    var nameB = (b.summary || "").toLowerCase()
+                    if (nameA < nameB) return -1
+                    if (nameA > nameB) return 1
+                    return 0
+                })
+                
+                // Add sorted calendars to model
+                for (var j = 0; j < calendars.length; j++) {
+                    calendarListModel.append(calendars[j])
+                    console.log("parseCalendarList - Added calendar:", calendars[j].display, "with ID:", calendars[j].id)
                 }
             }
             
@@ -297,7 +320,14 @@ Item {
     }
     
     function loadCalendarsFromConfig() {
+        // Prevent multiple simultaneous loads
+        if (calendarsLoading) {
+            console.log("loadCalendarsFromConfig: Already loading, skipping duplicate call")
+            return
+        }
+        
         // Try to load calendars from config file if available
+        calendarsLoading = true
         var homeDir = getHomeDir()
         var configPath = homeDir + "/.config/kagenda/config.json"
         configReader.connectSource("cat '" + configPath + "' 2>/dev/null || echo '{}'")
@@ -384,6 +414,7 @@ Item {
         
         // Clear models
         calendarListModel.clear()
+        calendarsLoading = false // Reset loading flag on logout
         
         // Clear events in root if available
         if (rootRef) {
@@ -440,13 +471,17 @@ Item {
             
             if (exitCode === 0) {
                 if (stdout && stdout.trim()) {
+                    // Clear the loading flag before parsing
+                    calendarsLoading = false
                     parseCalendarList(stdout)
                     // Wait a bit then load token
                     tokenLoadTimer.start()
                 } else {
+                    calendarsLoading = false
                     authStatusText = "Authentication completed but no calendar data received."
                 }
             } else {
+                calendarsLoading = false
                 authStatusText = "Authentication failed: " + (stderr || "Unknown error")
                 currentState = "auth"
             }
