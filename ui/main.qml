@@ -12,9 +12,14 @@ PlasmoidItem {
     
     preferredRepresentation: fullRepresentation
     
+    // Empty compactRepresentation to prevent default "Configure..." button from showing
+    compactRepresentation: Item {
+        // Empty - we don't want a compact representation
+    }
+    
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
     
-    // Mark widget as configurable
+    // Mark widget as configurable (but hide when modal is open)
     Plasmoid.configurationRequired: !cfg_accessToken || !cfg_calendarId
     
     // Function to open configuration modal
@@ -27,13 +32,32 @@ PlasmoidItem {
     // Configuration properties - these will be saved/loaded by Plasma
     property string cfg_calendarId: plasmoid.configuration.calendarId || ""
     property string cfg_accessToken: plasmoid.configuration.accessToken || ""
+    property string cfg_provider: plasmoid.configuration.provider || "google"
+    property string cfg_nextcloudServer: plasmoid.configuration.nextcloudServer || ""
     
     // Configuration modal
     property bool showConfigModal: false
+    property bool _originalConfigRequired: false
     onShowConfigModalChanged: {
         console.log("showConfigModal changed to:", showConfigModal)
         console.log("configModalLoader.active will be:", showConfigModal)
+        
+        // Temporarily disable configurationRequired when modal is open to hide built-in configure button
+        if (showConfigModal) {
+            // Store original state
+            if (!_originalConfigRequiredSet) {
+                _originalConfigRequired = Plasmoid.configurationRequired
+                _originalConfigRequiredSet = true
+            }
+            Plasmoid.configurationRequired = false
+        } else {
+            // Restore original state
+            if (_originalConfigRequiredSet) {
+                Plasmoid.configurationRequired = _originalConfigRequired
+            }
+        }
     }
+    property bool _originalConfigRequiredSet: false
     
     // Watch for configuration property changes
     onCfg_calendarIdChanged: {
@@ -92,14 +116,15 @@ PlasmoidItem {
         
         var homeDir = getHomeDir()
         var scriptPath = homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
+        var provider = cfg_provider || "google"
         
         // Use P5Support.DataSource to execute the Python script
         // The Python script will:
-        // 1. Open browser automatically (via flow.run_local_server)
+        // 1. Open browser automatically (via flow.run_local_server or OAuth callback)
         // 2. Handle OAuth callback
         // 3. Output calendar list JSON to stdout
         // 4. Save access token to config.json
-        oauthExecutable.connectSource("python3 '" + scriptPath + "'")
+        oauthExecutable.connectSource("python3 '" + scriptPath + "' " + provider)
         
         root.statusText = "Executing Python script... Browser should open automatically."
     }
@@ -186,6 +211,13 @@ PlasmoidItem {
         // Use cfg_ properties directly
         var token = cfg_accessToken || ""
         var calId = cfg_calendarId || ""
+        var provider = cfg_provider || "google"
+        
+        console.log("refreshEvents called:")
+        console.log("  - Calendar ID:", calId)
+        console.log("  - Provider:", provider)
+        console.log("  - Has token:", token.length > 0)
+        console.log("  - Nextcloud server:", cfg_nextcloudServer)
         
         if (!calId || !token) {
             statusText = "Please configure the widget"
@@ -199,63 +231,280 @@ PlasmoidItem {
         var timeMin = now.toISOString()
         var timeMax = later.toISOString()
         
-        var url = "https://www.googleapis.com/calendar/v3/calendars/" + 
+        var url = ""
+        var request = new XMLHttpRequest()
+        
+        if (provider === "google") {
+            // Google Calendar API
+            url = "https://www.googleapis.com/calendar/v3/calendars/" + 
                   encodeURIComponent(calId) + 
                   "/events?timeMin=" + encodeURIComponent(timeMin) + 
                   "&timeMax=" + encodeURIComponent(timeMax) + 
                   "&maxResults=50&singleEvents=true&orderBy=startTime"
-        
-        var request = new XMLHttpRequest()
-        request.open("GET", url)
-        request.setRequestHeader("Authorization", "Bearer " + token)
+            
+            request.open("GET", url)
+            request.setRequestHeader("Authorization", "Bearer " + token)
+        } else if (provider === "nextcloud") {
+            // Nextcloud Calendar API (using CalDAV REPORT)
+            var serverUrl = cfg_nextcloudServer || ""
+            if (!serverUrl) {
+                statusText = "Nextcloud server URL not configured"
+                return
+            }
+            
+            // Normalize server URL
+            serverUrl = serverUrl.replace(/\/$/, "")
+            
+            // Nextcloud Calendar API - try multiple endpoint formats
+            // Nextcloud Calendar app may use different endpoint formats depending on version
+            // Try: /apps/calendar/api/v1/calendars/{id}/events (Calendar app API)
+            // Or: /index.php/apps/calendar/api/v1/calendars/{id}/events (with index.php)
+            // Or: CalDAV REPORT (standard, but requires XML parsing)
+            
+            // Try format 1: Calendar app REST API without index.php
+            url = serverUrl + "/apps/calendar/api/v1/calendars/" + encodeURIComponent(calId) + "/events"
+            url += "?start=" + encodeURIComponent(timeMin) + "&end=" + encodeURIComponent(timeMax)
+            
+            console.log("Trying Nextcloud Calendar REST API (format 1):", url)
+            
+            request.open("GET", url)
+            request.setRequestHeader("Authorization", "Bearer " + token)
+            request.setRequestHeader("Accept", "application/json")
+        } else {
+            statusText = "Unknown provider: " + provider
+            return
+        }
         
         request.onreadystatechange = function() {
             if (request.readyState === XMLHttpRequest.DONE) {
+                console.log("Event fetch response status:", request.status)
+                console.log("Event fetch URL:", url)
+                
                 if (request.status === 200) {
-                    var response = JSON.parse(request.responseText)
-                    calendarModel.clear()
-                    
-                    if (response.items) {
-                        for (var i = 0; i < response.items.length; i++) {
-                            var event = response.items[i]
-                            var start = event.start.dateTime || event.start.date
-                            var end = event.end.dateTime || event.end.date
-                            
-                            var startDate = new Date(start)
-                            var endDate = new Date(end)
-                            var dateStr = startDate.toISOString().split('T')[0]
-                            var timeStr = ""
-                            
-                            if (event.start.dateTime) {
-                                var startTime = startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                                var endTime = endDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                                timeStr = startTime + " - " + endTime
+                    try {
+                        var response = JSON.parse(request.responseText)
+                        console.log("Event fetch response (first 500 chars):", JSON.stringify(response).substring(0, 500))
+                        calendarModel.clear()
+                        
+                        var events = []
+                        
+                        if (provider === "google") {
+                            // Google Calendar format
+                            events = response.items || []
+                        } else if (provider === "nextcloud") {
+                            // Nextcloud Calendar format
+                            // The API might return data in different formats
+                            console.log("Parsing Nextcloud events, response type:", typeof response)
+                            if (response.data && Array.isArray(response.data)) {
+                                events = response.data
+                                console.log("Found events in response.data:", events.length)
+                            } else if (Array.isArray(response)) {
+                                events = response
+                                console.log("Found events as direct array:", events.length)
+                            } else if (response.objects) {
+                                // CalDAV format
+                                events = response.objects
+                                console.log("Found events in response.objects:", events.length)
+                            } else if (response.ocs && response.ocs.data && Array.isArray(response.ocs.data)) {
+                                // OCS format
+                                events = response.ocs.data
+                                console.log("Found events in response.ocs.data:", events.length)
                             } else {
-                                timeStr = "All day"
+                                console.log("No events found in response. Response keys:", Object.keys(response))
+                            }
+                        }
+                    
+                    for (var i = 0; i < events.length; i++) {
+                        var event = events[i]
+                        var start, end, summary, location
+                        
+                        if (provider === "google") {
+                            start = event.start.dateTime || event.start.date
+                            end = event.end.dateTime || event.end.date
+                            summary = event.summary || "No Title"
+                            location = event.location || ""
+                        } else if (provider === "nextcloud") {
+                            // Nextcloud event format
+                            if (event.dtstart) {
+                                start = event.dtstart
+                            } else if (event.start) {
+                                start = event.start
+                            } else if (event.startDate) {
+                                start = event.startDate
                             }
                             
-                            calendarModel.append({
-                                title: event.summary || "No Title",
-                                date: dateStr,
-                                time: timeStr,
-                                location: event.location || ""
-                            })
+                            if (event.dtend) {
+                                end = event.dtend
+                            } else if (event.end) {
+                                end = event.end
+                            } else if (event.endDate) {
+                                end = event.endDate
+                            }
+                            
+                            summary = event.title || event.summary || event.name || "No Title"
+                            location = event.location || ""
                         }
+                        
+                        if (!start) continue
+                        
+                        var startDate = new Date(start)
+                        var endDate = end ? new Date(end) : startDate
+                        var dateStr = startDate.toISOString().split('T')[0]
+                        var timeStr = ""
+                        
+                        // Check if it's an all-day event (date only, no time)
+                        var isAllDay = !start.includes('T') || (provider === "nextcloud" && !start.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/))
+                        
+                        if (!isAllDay && startDate) {
+                            var startTime = startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
+                            var endTime = endDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
+                            timeStr = startTime + " - " + endTime
+                        } else {
+                            timeStr = "All day"
+                        }
+                        
+                        calendarModel.append({
+                            title: summary,
+                            date: dateStr,
+                            time: timeStr,
+                            location: location
+                        })
                     }
                     
                     // Status text removed - no longer displayed
+                    } catch(e) {
+                        console.log("Error parsing event response:", e)
+                        console.log("Response text:", request.responseText.substring(0, 500))
+                        statusText = "Error parsing events: " + e.toString()
+                    }
                 } else if (request.status === 401) {
+                    console.log("Authentication expired (401)")
                     statusText = "Authentication expired. Refreshing token..."
                     // Token expired - try to refresh by running OAuth helper
                     // The Python script will automatically refresh if refresh_token exists
                     executeOAuthScript()
+                } else if (request.status === 404) {
+                    console.log("404 Not Found - REST API not available, trying CalDAV via Python helper...")
+                    console.log("Calendar ID:", calId)
+                    
+                    // XMLHttpRequest doesn't support REPORT method, use Python helper instead
+                    var homeDir = getHomeDir()
+                    var scriptPath = homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
+                    var command = "python3 '" + scriptPath + "' --fetch-events '" + 
+                                  serverUrl + "' '" + 
+                                  calId + "' '" + 
+                                  token + "' '" + 
+                                  timeMin + "' '" + 
+                                  timeMax + "'"
+                    
+                    console.log("Calling Python helper for CalDAV events...")
+                    caldavEventFetcher.connectSource(command)
+                    return // Don't show error message yet, wait for Python response
                 } else {
-                    statusText = "Error loading events: " + request.status
+                    console.log("Error loading events - Status:", request.status)
+                    console.log("Response text:", request.responseText.substring(0, 500))
+                    statusText = "Error loading events: " + request.status + " - " + (request.responseText.substring(0, 100) || "Unknown error")
                 }
             }
         }
         
         request.send()
+    }
+    
+    // DataSource for fetching CalDAV events via Python helper
+    P5Support.DataSource {
+        id: caldavEventFetcher
+        engine: "executable"
+        connectedSources: []
+        
+        onNewData: function(sourceName, data) {
+            var exitCode = data["exit code"] || 0
+            var stdout = data.stdout || ""
+            var stderr = data.stderr || ""
+            
+            console.log("CalDAV event fetcher finished. Exit code:", exitCode)
+            
+            if (exitCode === 0 && stdout && stdout.trim()) {
+                try {
+                    var response = JSON.parse(stdout.trim())
+                    console.log("CalDAV events response:", JSON.stringify(response).substring(0, 500))
+                    calendarModel.clear()
+                    
+                    var events = response.items || []
+                    console.log("Found", events.length, "events from CalDAV")
+                    
+                    for (var i = 0; i < events.length; i++) {
+                        var event = events[i]
+                        var start = event.start
+                        var end = event.end
+                        var summary = event.summary || "No Title"
+                        var location = event.location || ""
+                        
+                        if (!start) continue
+                        
+                        // Parse iCalendar date format (YYYYMMDDTHHMMSSZ or YYYYMMDD)
+                        var startDate, endDate
+                        if (start.length === 8) {
+                            // All-day event (YYYYMMDD)
+                            startDate = new Date(start.substring(0,4), parseInt(start.substring(4,6))-1, start.substring(6,8))
+                            endDate = end && end.length === 8 ? new Date(end.substring(0,4), parseInt(end.substring(4,6))-1, end.substring(6,8)) : startDate
+                        } else if (start.length >= 15) {
+                            // Date-time (YYYYMMDDTHHMMSSZ)
+                            var year = start.substring(0,4)
+                            var month = parseInt(start.substring(4,6)) - 1
+                            var day = start.substring(6,8)
+                            var hour = start.substring(9,11) || 0
+                            var minute = start.substring(11,13) || 0
+                            var second = start.substring(13,15) || 0
+                            startDate = new Date(Date.UTC(year, month, day, hour, minute, second))
+                            
+                            if (end && end.length >= 15) {
+                                var endYear = end.substring(0,4)
+                                var endMonth = parseInt(end.substring(4,6)) - 1
+                                var endDay = end.substring(6,8)
+                                var endHour = end.substring(9,11) || 0
+                                var endMinute = end.substring(11,13) || 0
+                                var endSecond = end.substring(13,15) || 0
+                                endDate = new Date(Date.UTC(endYear, endMonth, endDay, endHour, endMinute, endSecond))
+                            } else {
+                                endDate = startDate
+                            }
+                        } else {
+                            continue
+                        }
+                        
+                        var dateStr = startDate.toISOString().split('T')[0]
+                        var timeStr = ""
+                        var isAllDay = start.length === 8
+                        
+                        if (!isAllDay && startDate) {
+                            var startTime = startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
+                            var endTime = endDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
+                            timeStr = startTime + " - " + endTime
+                        } else {
+                            timeStr = "All day"
+                        }
+                        
+                        calendarModel.append({
+                            title: summary,
+                            date: dateStr,
+                            time: timeStr,
+                            location: location
+                        })
+                    }
+                    
+                    console.log("Loaded", calendarModel.count, "events from CalDAV")
+                    statusText = "Loaded " + calendarModel.count + " events"
+                } catch(e) {
+                    console.log("Error parsing CalDAV events:", e)
+                    statusText = "Error parsing CalDAV events: " + e.toString()
+                }
+            } else {
+                console.log("CalDAV fetch error:", stderr)
+                statusText = "Failed to fetch events: " + (stderr || "Unknown error")
+            }
+            disconnectSource(sourceName)
+        }
     }
     
     // DataSource for reading config file
@@ -273,6 +522,12 @@ PlasmoidItem {
                         if (config.access_token) {
                             // Save to plasmoid configuration
                             plasmoid.configuration.accessToken = config.access_token
+                            if (config.provider) {
+                                plasmoid.configuration.provider = config.provider
+                            }
+                            if (config.nextcloud_server) {
+                                plasmoid.configuration.nextcloudServer = config.nextcloud_server
+                            }
                             console.log("Access token loaded and saved to configuration:", config.access_token.substring(0, 20) + "...")
                             
                             // Wait a moment for the property binding to update, then check if we can refresh events
@@ -390,6 +645,7 @@ PlasmoidItem {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 8
+            visible: !showConfigModal
             
             RowLayout {
                 Layout.fillWidth: true
@@ -476,311 +732,78 @@ PlasmoidItem {
             
         }
         
-        // Configuration modal using Popup component
-        QQC2.Popup {
-            id: configModalPopup
-            anchors.centerIn: parent
-            width: Math.min(parent.width * 0.9, 600)
-            height: Math.min(parent.height * 0.8, 350)
-            modal: true
-            closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
-            visible: showConfigModal
+        // Configuration modal using Loader
+        Loader {
+            id: configModalLoader
+            active: showConfigModal
+            source: "ConfigModal.qml"
+            anchors.fill: parent
             
-            onVisibleChanged: {
-                if (!visible) {
-                    showConfigModal = false
-                }
-            }
-            
-            background: Rectangle {
-                radius: 8
-                color: "#2b2b2b"
-                border.color: "#555555"
-                border.width: 1
-                
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#2b2b2b" }
-                    GradientStop { position: 1.0; color: "#1e1e1e" }
-                }
-            }
-            
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 20
-                anchors.topMargin: 15
-                anchors.bottomMargin: 15
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                spacing: 15
-                
-                // Title
-                RowLayout {
-                    Layout.fillWidth: true
-                    
-                    PlasmaComponents.Label {
-                        text: "KAgenda Configuration"
-                        font.bold: true
-                        font.pointSize: 16
-                        color: "#ffffff"
-                    }
-                    
-                    Item { Layout.fillWidth: true }
-                    
-                    // Close button
-                    Kirigami.Icon {
-                        source: "window-close"
-                        width: 20
-                        height: 20
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                configModalPopup.close()
-                            }
-                        }
-                    }
-                }
-                
-                // OAuth Authentication Button
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 5
-                    
-                    PlasmaComponents.Label {
-                        text: "Step 1: Authenticate with Google"
-                        color: "#ffffff"
-                        font.bold: true
-                    }
-                    
-                    PlasmaComponents.Button {
-                        id: oauthButton
-                        Layout.fillWidth: true
-                        text: {
-                            if (fullRepresentation && fullRepresentation.oauthOutputTimerInstance && fullRepresentation.oauthOutputTimerInstance.running) {
-                                return "Authenticating..."
-                            } else {
-                                return "Authenticate with Google"
-                            }
-                        }
-                        enabled: !(fullRepresentation && fullRepresentation.oauthOutputTimerInstance && fullRepresentation.oauthOutputTimerInstance.running)
-                        onClicked: {
-                            root.executeOAuthScript()
-                        }
-                    }
-                    
-                    PlasmaComponents.Label {
-                        Layout.fillWidth: true
-                        text: statusText || ""
-                        color: "#808080"
-                        wrapMode: Text.WordWrap
-                        visible: statusText !== ""
-                    }
-                }
-                
-                // Calendar Selection
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 5
-                    
-                    PlasmaComponents.Label {
-                        text: "Step 2: Select Calendar:"
-                        color: "#ffffff"
-                    }
-                    
-                    QQC2.ComboBox {
-                        id: calendarCombo
-                        Layout.fillWidth: true
-                        model: calendarListModel
-                        textRole: "display"
-                        enabled: calendarListModel.count > 0
-                        
-                        // Set placeholder text when no calendar is selected
-                        displayText: {
-                            if (currentIndex >= 0 && calendarListModel.count > 0) {
-                                var calendar = calendarListModel.get(currentIndex)
-                                return calendar.display || calendar.summary || calendar.id
-                            } else if (cfg_calendarId && calendarListModel.count > 0) {
-                                // Try to find and select the saved calendar
-                                for (var i = 0; i < calendarListModel.count; i++) {
-                                    if (calendarListModel.get(i).id === cfg_calendarId) {
-                                        currentIndex = i
-                                        var calendar = calendarListModel.get(i)
-                                        return calendar.display || calendar.summary || calendar.id
-                                    }
-                                }
-                                return "Select a calendar"
-                            } else {
-                                return "Select a calendar"
-                            }
-                        }
-                        
-                        background: Rectangle {
-                            color: "#1e1e1e"
-                            border.color: "#555555"
-                            border.width: 1
-                            radius: 4
-                        }
-                        
-                        contentItem: Text {
-                            text: calendarCombo.displayText
-                            color: calendarCombo.enabled ? "#ffffff" : "#808080"
-                            verticalAlignment: Text.AlignVCenter
-                            leftPadding: 12
-                            rightPadding: calendarCombo.indicator.width + calendarCombo.spacing
-                        }
-                        
-                        delegate: QQC2.ItemDelegate {
-                            width: calendarCombo.width
-                            text: model.display || model.summary || model.id
-                            background: Rectangle {
-                                color: parent.hovered ? "#3a3a3a" : "transparent"
-                            }
-                        }
-                        
-                        onActivated: function(index) {
-                            if (index >= 0) {
-                                var calendar = calendarListModel.get(index)
-                                var calendarId = calendar.id
-                                
-                                // Save to configuration immediately
-                                plasmoid.configuration.calendarId = calendarId
-                                
-                                // Refresh events immediately after selection
-                                if (cfg_accessToken && calendarId) {
-                                    root.statusText = "Loading events for " + (calendar.summary || calendarId) + "..."
-                                    // Use a small delay to ensure configuration is saved
-                                    Qt.callLater(function() {
-                                        root.refreshEvents()
-                                    })
-                                }
-                            }
-                        }
-                        
-                        // Update selection when calendarId changes or when calendars are loaded
-                        Component.onCompleted: {
-                            updateSelection()
-                        }
-                        
-                        function updateSelection() {
-                            if (cfg_calendarId && calendarListModel.count > 0) {
-                                for (var i = 0; i < calendarListModel.count; i++) {
-                                    if (calendarListModel.get(i).id === cfg_calendarId) {
-                                        currentIndex = i
-                                        return
-                                    }
-                                }
-                            }
-                            // If no match found, set to -1 to show placeholder
-                            if (currentIndex < 0 || currentIndex >= calendarListModel.count) {
-                                currentIndex = -1
-                            }
-                        }
-                    }
-                    
-                    // Watch for calendarId changes to update selection
-                    Connections {
-                        target: root
-                        function onCfg_calendarIdChanged() {
-                            if (calendarCombo) {
-                                calendarCombo.updateSelection()
-                            }
-                        }
-                    }
-                }
-                
-                Item { 
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 0
-                }
-                
-                // Buttons - fixed at bottom
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.maximumHeight: 40
-                    Layout.minimumHeight: 40
-                    spacing: 10
-                    
-                    PlasmaComponents.Button {
-                        text: "Cancel"
-                        Layout.preferredWidth: 80
-                        onClicked: {
-                            configModalPopup.close()
-                        }
-                    }
-                    
-                    Item { Layout.fillWidth: true }
-                    
-                    PlasmaComponents.Button {
-                        text: "Save"
-                        Layout.preferredWidth: 80
-                        onClicked: {
-                            if (plasmoid && plasmoid.configuration) {
-                                // Save configuration
-                                // Access token is already saved automatically after authentication
-                                plasmoid.configuration.calendarId = (calendarCombo.currentIndex >= 0 ? calendarListModel.get(calendarCombo.currentIndex).id : "")
-                                
-                                // Trigger refresh in parent
-                                if (root && typeof root.refreshEvents === 'function') {
-                                    root.refreshEvents()
-                                }
-                                
-                                // Close modal
-                                configModalPopup.close()
-                            }
-                        }
+            onLoaded: {
+                if (item) {
+                    item.plasmoidRef = plasmoid
+                    item.rootRef = root
+                    item.onClose = function() {
+                        root.showConfigModal = false
                     }
                 }
             }
+        }
+        
+        // Timer to check for OAuth completion (kept for backward compatibility)
+        property alias oauthOutputTimer: oauthOutputTimerInstance
+        Timer {
+            id: oauthOutputTimerInstance
+            interval: 1000
+            repeat: true
+            running: false
             
-            
-            // Timer to check for OAuth completion
-            property alias oauthOutputTimer: oauthOutputTimerInstance
-            Timer {
-                id: oauthOutputTimerInstance
-                interval: 1000
-                repeat: true
-                running: false
+            onTriggered: {
+                var homeDir = root.getHomeDir()
                 
-                onTriggered: {
-                    var homeDir = root.getHomeDir()
-                    
-                    // Check for output file from wrapper script
-                    var outputFile = "file://" + homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-output.json"
-                    var request = new XMLHttpRequest()
-                    request.open("GET", outputFile, false)
-                    request.send()
-                    
-                    if (request.status === 200 && request.responseText.trim()) {
-                        try {
-                            // Parse the calendar list JSON
-                            var calendarData = JSON.parse(request.responseText.trim())
-                            parseCalendarList(request.responseText.trim())
-                            
-                            // Load access token from config
-                            loadAccessTokenFromConfig()
-                            
-                            statusText = "Authentication successful! " + calendarListModel.count + " calendar(s) loaded."
+                // Check for output file from wrapper script
+                var outputFile = "file://" + homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-output.json"
+                var request = new XMLHttpRequest()
+                request.open("GET", outputFile, false)
+                request.send()
+                
+                if (request.status === 200 && request.responseText.trim()) {
+                    try {
+                        // Parse the calendar list JSON
+                        var calendarData = JSON.parse(request.responseText.trim())
+                        root.parseCalendarList(request.responseText.trim())
+                        
+                        // Load access token from config
+                        root.loadAccessTokenFromConfig()
+                        
+                        root.statusText = "Authentication successful! " + root.calendarListModel.count + " calendar(s) loaded."
+                        running = false
+                    } catch(e) {
+                        console.log("Error parsing output:", e)
+                    }
+                }
+                
+                // Also check config file directly as fallback
+                var configPath = "file://" + homeDir + "/.config/kagenda/config.json"
+                var configRequest = new XMLHttpRequest()
+                configRequest.open("GET", configPath, false)
+                configRequest.send()
+                
+                if (configRequest.status === 200) {
+                    try {
+                        var config = JSON.parse(configRequest.responseText.trim())
+                        if (config.access_token) {
+                            plasmoid.configuration.accessToken = config.access_token
+                            if (config.provider) {
+                                plasmoid.configuration.provider = config.provider
+                            }
+                            if (config.nextcloud_server) {
+                                plasmoid.configuration.nextcloudServer = config.nextcloud_server
+                            }
                             running = false
-                        } catch(e) {
-                            console.log("Error parsing output:", e)
                         }
-                    }
-                    
-                    // Also check config file directly as fallback
-                    var configPath = "file://" + homeDir + "/.config/kagenda/config.json"
-                    var configRequest = new XMLHttpRequest()
-                    configRequest.open("GET", configPath, false)
-                    configRequest.send()
-                    
-                    if (configRequest.status === 200) {
-                        try {
-                            var config = JSON.parse(configRequest.responseText)
-                            if (config.access_token) {
-                                plasmoid.configuration.accessToken = config.access_token
-                            }
-                        } catch(e) {
-                            console.log("Error:", e)
-                        }
+                    } catch(e) {
+                        console.log("Error parsing config:", e)
                     }
                 }
             }
