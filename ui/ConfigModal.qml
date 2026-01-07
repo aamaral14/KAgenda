@@ -1013,7 +1013,15 @@ Item {
                 
                 PlasmaComponents.Button {
                     text: isAuthenticated ? "Logout" : "Cancel"
-                    Layout.preferredWidth: 80
+                    Layout.fillWidth: false
+                    Layout.preferredWidth: 100
+                    Layout.minimumWidth: 100
+                    Layout.maximumWidth: 100
+                    Layout.preferredHeight: 40
+                    Layout.minimumHeight: 40
+                    Layout.maximumHeight: 40
+                    implicitWidth: 100
+                    implicitHeight: 40
                     onClicked: {
                         if (isAuthenticated) {
                             // Logout
@@ -1025,6 +1033,7 @@ Item {
                     
                     // Style the logout button with red color for good contrast
                     background: Rectangle {
+                        anchors.fill: parent
                         color: isAuthenticated ? "#cc0000" : "#2b2b2b"
                         border.color: isAuthenticated ? "#ff3333" : "#555555"
                         border.width: 1
@@ -1044,7 +1053,15 @@ Item {
 
                 PlasmaComponents.Button {
                     text: "Save"
-                    Layout.preferredWidth: 80
+                    Layout.fillWidth: false
+                    Layout.preferredWidth: 100
+                    Layout.minimumWidth: 100
+                    Layout.maximumWidth: 100
+                    Layout.preferredHeight: 40
+                    Layout.minimumHeight: 40
+                    Layout.maximumHeight: 40
+                    implicitWidth: 100
+                    implicitHeight: 40
                     enabled: isAuthenticated ? true : canSave
                     onClicked: {
                         if (isAuthenticated) {
