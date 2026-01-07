@@ -34,6 +34,7 @@ PlasmoidItem {
     property string cfg_accessToken: plasmoid.configuration.accessToken || ""
     property string cfg_provider: plasmoid.configuration.provider || "google"
     property string cfg_nextcloudServer: plasmoid.configuration.nextcloudServer || ""
+    property int cfg_daysToShow: plasmoid.configuration.daysToShow || 7
     
     // Configuration modal
     property bool showConfigModal: false
@@ -67,6 +68,12 @@ PlasmoidItem {
     }
     
     onCfg_accessTokenChanged: {
+        if (cfg_calendarId && cfg_accessToken) {
+            refreshTimer.restart()
+        }
+    }
+    
+    onCfg_daysToShowChanged: {
         if (cfg_calendarId && cfg_accessToken) {
             refreshTimer.restart()
         }
@@ -227,7 +234,8 @@ PlasmoidItem {
         statusText = "Loading events..."
         
         var now = new Date()
-        var later = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+        var days = cfg_daysToShow || 7
+        var later = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
         var timeMin = now.toISOString()
         var timeMax = later.toISOString()
         

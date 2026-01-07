@@ -17,12 +17,31 @@ Item {
         if (visible) {
             // Check authentication status when modal becomes visible
             checkAuthenticationStatus()
+            // Update days to show value when modal opens
+            // Use a timer to ensure plasmoidRef is set and SpinBox is created
+            updateDaysValueTimer.start()
         }
     }
     
     property var plasmoidRef: null
     property var onClose: null
     property var rootRef: null
+    
+    // Watch for when plasmoidRef is set (from Loader)
+    onPlasmoidRefChanged: {
+        console.log("onPlasmoidRefChanged: plasmoidRef is now", plasmoidRef ? "available" : "null")
+        if (plasmoidRef) {
+            // Update SpinBox value when plasmoidRef becomes available
+            Qt.callLater(function() {
+                if (daysToShowSpinBox) {
+                    console.log("onPlasmoidRefChanged: calling loadValue()")
+                    daysToShowSpinBox.loadValue()
+                } else {
+                    console.log("onPlasmoidRefChanged: daysToShowSpinBox not ready yet")
+                }
+            })
+        }
+    }
     
     // State management
     property string currentState: "auth" // "auth", "nextcloudEndpoints", "authenticating", "selectCalendar", "configured"
@@ -102,6 +121,16 @@ Item {
             selectedProvider = plasmoidRef.configuration.provider || "google"
             authStatusText = "Authenticated with " + (selectedProvider === "nextcloud" ? "Nextcloud" : "Google") + ". Calendar: " + (plasmoidRef.configuration.calendarId || "Unknown")
             loadCalendarsFromConfig()
+            // Initialize days to show if not set
+            if (plasmoidRef && plasmoidRef.configuration && !plasmoidRef.configuration.daysToShow) {
+                plasmoidRef.configuration.daysToShow = 7
+            }
+            // Update SpinBox value after a delay to ensure it's created
+            Qt.callLater(function() {
+                if (daysToShowSpinBox) {
+                    daysToShowSpinBox.loadValue()
+                }
+            })
         } else if (plasmoidRef && plasmoidRef.configuration.accessToken) {
             currentState = "selectCalendar"
             selectedProvider = plasmoidRef.configuration.provider || "google"
@@ -606,6 +635,79 @@ Item {
                         visible: authStatusText.length > 0 || currentState === "auth"
                     }
                     
+                    // Days to show configuration (shown when authenticated)
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        visible: isAuthenticated && currentState === "configured"
+                        
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            text: "Event display interval (days):"
+                            color: "#ffffff"
+                        }
+                        
+                        QQC2.SpinBox {
+                            id: daysToShowSpinBox
+                            Layout.fillWidth: true
+                            from: 1
+                            to: 365
+                            
+                            Component.onCompleted: {
+                                loadValue()
+                            }
+                            
+                            function loadValue() {
+                                if (plasmoidRef && plasmoidRef.configuration) {
+                                    var savedValue = plasmoidRef.configuration.daysToShow
+                                    console.log("SpinBox loadValue: config has daysToShow =", savedValue, "type:", typeof savedValue)
+                                    if (savedValue !== undefined && savedValue !== null && savedValue > 0) {
+                                        value = parseInt(savedValue)
+                                        console.log("SpinBox loadValue: set value to", value)
+                                    } else {
+                                        value = 7
+                                        console.log("SpinBox loadValue: no valid value, using default 7")
+                                    }
+                                } else {
+                                    value = 7
+                                    console.log("SpinBox loadValue: plasmoidRef not available, using default 7")
+                                }
+                            }
+                            
+                            // Update value when visible state changes (modal reopened)
+                            Connections {
+                                target: configModal
+                                function onVisibleChanged() {
+                                    if (configModal.visible && isAuthenticated) {
+                                        // Delay to ensure everything is ready
+                                        refreshTimer.start()
+                                    }
+                                }
+                            }
+                            
+                            Timer {
+                                id: refreshTimer
+                                interval: 150
+                                repeat: false
+                                onTriggered: {
+                                    daysToShowSpinBox.loadValue()
+                                }
+                            }
+                            
+                            background: Rectangle {
+                                color: "#1e1e1e"
+                                border.color: "#555555"
+                                border.width: 1
+                                radius: 4
+                            }
+                            
+                            onValueChanged: {
+                                // Don't save on every change, only when Save button is clicked
+                                // This prevents saving intermediate values while user is typing
+                            }
+                        }
+                    }
+                    
                     // Authentication buttons (shown when not authenticated)
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -910,23 +1012,57 @@ Item {
                 spacing: 10
                 
                 PlasmaComponents.Button {
-                    text: "Cancel"
+                    text: isAuthenticated ? "Logout" : "Cancel"
                     Layout.preferredWidth: 80
                     onClicked: {
-                        if (onClose) onClose()
+                        if (isAuthenticated) {
+                            // Logout
+                            logout()
+                        } else {
+                            if (onClose) onClose()
+                        }
+                    }
+                    
+                    // Style the logout button with red color for good contrast
+                    background: Rectangle {
+                        color: isAuthenticated ? "#cc0000" : "#2b2b2b"
+                        border.color: isAuthenticated ? "#ff3333" : "#555555"
+                        border.width: 1
+                        radius: 4
+                    }
+                    
+                    contentItem: Text {
+                        text: parent.text
+                        font: parent.font
+                        color: "#ffffff"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                 }
 
                 Item { Layout.fillWidth: true }
 
                 PlasmaComponents.Button {
-                    text: isAuthenticated ? "Logout" : "Save"
+                    text: "Save"
                     Layout.preferredWidth: 80
                     enabled: isAuthenticated ? true : canSave
                     onClicked: {
                         if (isAuthenticated) {
-                            // Logout
-                            logout()
+                            // Save the days to show configuration
+                            if (plasmoidRef && plasmoidRef.configuration && daysToShowSpinBox) {
+                                plasmoidRef.configuration.daysToShow = daysToShowSpinBox.value
+                                console.log("Saved days to show:", daysToShowSpinBox.value)
+                                
+                                // Trigger refresh in parent
+                                if (rootRef && typeof rootRef.refreshEvents === 'function') {
+                                    rootRef.refreshEvents()
+                                }
+                                
+                                // Close modal after save
+                                Qt.callLater(function() {
+                                    if (onClose) onClose()
+                                })
+                            }
                         } else if (currentState === "selectCalendar") {
                             saveConfiguration()
                         } else if (currentState === "nextcloudEndpoints") {
