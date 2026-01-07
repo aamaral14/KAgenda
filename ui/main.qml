@@ -19,8 +19,8 @@ PlasmoidItem {
     
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
     
-    // Mark widget as configurable (but hide when modal is open)
-    Plasmoid.configurationRequired: !cfg_accessToken || !cfg_calendarId
+    // Don't show the built-in "Configure..." button - we use our custom modal instead
+    Plasmoid.configurationRequired: false
     
     // Function to open configuration modal
     function openConfiguration() {

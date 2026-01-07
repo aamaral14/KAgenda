@@ -13,6 +13,13 @@ Item {
     z: 999999
     visible: true
     
+    onVisibleChanged: {
+        if (visible) {
+            // Check authentication status when modal becomes visible
+            checkAuthenticationStatus()
+        }
+    }
+    
     property var plasmoidRef: null
     property var onClose: null
     property var rootRef: null
@@ -33,6 +40,37 @@ Item {
     
     // Calendar list model
     property var calendarListModel: ListModel { id: calendarListModel }
+    
+    // Property to track authentication status
+    property bool isAuthenticated: false
+    
+    // Function to check and update authentication status
+    function checkAuthenticationStatus() {
+        if (!plasmoidRef || !plasmoidRef.configuration) {
+            isAuthenticated = false
+            return false
+        }
+        
+        var hasToken = plasmoidRef.configuration.accessToken && plasmoidRef.configuration.accessToken.length > 0
+        var hasCalendar = plasmoidRef.configuration.calendarId && plasmoidRef.configuration.calendarId.length > 0
+        var wasAuthenticated = isAuthenticated
+        isAuthenticated = hasToken && hasCalendar
+        
+        // If we just became authenticated, update the state
+        if (isAuthenticated && !wasAuthenticated) {
+            if (currentState === "selectCalendar" || currentState === "authenticating" || currentState === "auth") {
+                currentState = "configured"
+                var provider = selectedProvider || plasmoidRef.configuration.provider || "google"
+                var calendarId = plasmoidRef.configuration.calendarId || "Unknown"
+                authStatusText = "Authenticated with " + provider + ". Calendar: " + calendarId
+            }
+        } else if (!isAuthenticated && wasAuthenticated && currentState === "configured") {
+            currentState = "auth"
+            authStatusText = "Logged out. Please authenticate again."
+        }
+        
+        return isAuthenticated
+    }
     
     // Computed property to check if all required fields are filled
     property bool canSave: {
@@ -58,7 +96,13 @@ Item {
     Component.onCompleted: {
         console.log("ConfigModal Component.onCompleted")
         // Check if already authenticated
-        if (plasmoidRef && plasmoidRef.configuration.accessToken) {
+        checkAuthenticationStatus()
+        if (isAuthenticated) {
+            currentState = "configured"
+            selectedProvider = plasmoidRef.configuration.provider || "google"
+            authStatusText = "Authenticated with " + (selectedProvider === "nextcloud" ? "Nextcloud" : "Google") + ". Calendar: " + (plasmoidRef.configuration.calendarId || "Unknown")
+            loadCalendarsFromConfig()
+        } else if (plasmoidRef && plasmoidRef.configuration.accessToken) {
             currentState = "selectCalendar"
             selectedProvider = plasmoidRef.configuration.provider || "google"
             loadCalendarsFromConfig()
@@ -72,6 +116,17 @@ Item {
         if (currentState === "nextcloudEndpoints" && nextcloudPort < 0) {
             console.log("State changed to nextcloudEndpoints, scanning for port...")
             findAvailablePort()
+        }
+    }
+    
+    // Timer to periodically check authentication status (since configuration properties might not emit change signals)
+    Timer {
+        id: authStatusTimer
+        interval: 200
+        running: visible
+        repeat: true
+        onTriggered: {
+            checkAuthenticationStatus()
         }
     }
     
@@ -240,6 +295,8 @@ Item {
             
             plasmoidRef.configuration.calendarId = String(calendar.id).trim()
             console.log("  - Saved calendar ID:", plasmoidRef.configuration.calendarId)
+            // Check authentication status immediately after saving calendarId
+            checkAuthenticationStatus()
         } else {
             console.log("WARNING: No calendar selected! Index:", calendarCombo.currentIndex, "Count:", calendarListModel.count)
             authStatusText = "Please select a calendar"
@@ -258,6 +315,15 @@ Item {
         
         // Wait a moment for token to load, then refresh events
         Qt.callLater(function() {
+            // Check authentication status after token loads
+            checkAuthenticationStatus()
+            
+            // If authenticated, update the UI
+            if (isAuthenticated) {
+                currentState = "configured"
+                authStatusText = "Configuration saved! Authenticated with " + selectedProvider + "."
+            }
+            
             // Trigger refresh in parent
             if (rootRef && typeof rootRef.refreshEvents === 'function') {
                 rootRef.refreshEvents()
@@ -274,6 +340,49 @@ Item {
         var homeDir = getHomeDir()
         var configPath = homeDir + "/.config/kagenda/config.json"
         tokenReader.connectSource("cat '" + configPath + "' 2>/dev/null || echo '{}'")
+    }
+    
+    function logout() {
+        if (!plasmoidRef || !plasmoidRef.configuration) return
+        
+        console.log("Logging out - clearing tokens and events")
+        
+        // Clear configuration
+        plasmoidRef.configuration.accessToken = ""
+        plasmoidRef.configuration.calendarId = ""
+        plasmoidRef.configuration.provider = ""
+        plasmoidRef.configuration.nextcloudServer = ""
+        
+        // Clear models
+        calendarListModel.clear()
+        
+        // Clear events in root if available
+        if (rootRef) {
+            if (typeof rootRef.calendarModel !== 'undefined' && rootRef.calendarModel) {
+                rootRef.calendarModel.clear()
+            }
+            if (typeof rootRef.logout === 'function') {
+                rootRef.logout()
+            }
+        }
+        
+        // Update authentication status
+        checkAuthenticationStatus()
+        
+        // Reset state
+        currentState = "auth"
+        selectedProvider = ""
+        authStatusText = "Logged out. Please authenticate again."
+        redirectUri = ""
+        nextcloudPort = -1
+        
+        // Reset Nextcloud fields
+        nextcloudAuthEndpoint = "http://localhost:8080/apps/oauth2/authorize"
+        nextcloudTokenEndpoint = "http://localhost:8080/apps/oauth2/api/v1/token"
+        nextcloudClientId = ""
+        nextcloudClientSecret = ""
+        
+        console.log("Logout complete")
     }
     
     // DataSource for OAuth execution
@@ -359,6 +468,9 @@ Item {
                             if (config.nextcloud_server) {
                                 plasmoidRef.configuration.nextcloudServer = config.nextcloud_server
                             }
+                            
+                            // Check authentication status after token is loaded
+                            checkAuthenticationStatus()
                         }
                     } catch(e) {
                         console.log("Error parsing token config:", e)
@@ -489,7 +601,7 @@ Item {
                         id: statusLabel
                         Layout.fillWidth: true
                         text: authStatusText || "Select authentication method:"
-                        color: "#ffffff"
+                        color: (currentState === "configured" && isAuthenticated) ? "#88ff88" : "#ffffff"
                         wrapMode: Text.WordWrap
                         visible: authStatusText.length > 0 || currentState === "auth"
                     }
@@ -498,7 +610,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        visible: currentState === "auth"
+                        visible: !isAuthenticated && currentState === "auth"
                         
                         PlasmaComponents.Button {
                             Layout.fillWidth: true
@@ -808,11 +920,14 @@ Item {
                 Item { Layout.fillWidth: true }
 
                 PlasmaComponents.Button {
-                    text: "Save"
+                    text: isAuthenticated ? "Logout" : "Save"
                     Layout.preferredWidth: 80
-                    enabled: canSave
+                    enabled: isAuthenticated ? true : canSave
                     onClicked: {
-                        if (currentState === "selectCalendar") {
+                        if (isAuthenticated) {
+                            // Logout
+                            logout()
+                        } else if (currentState === "selectCalendar") {
                             saveConfiguration()
                         } else if (currentState === "nextcloudEndpoints") {
                             // Validate and proceed with Nextcloud authentication
