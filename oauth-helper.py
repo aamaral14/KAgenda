@@ -257,7 +257,8 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
     sys.stderr.write(f"DEBUG: Input server_url parameter: {server_url}\n")
     sys.stderr.write(f"DEBUG: Input auth_endpoint parameter: {auth_endpoint}\n")
     sys.stderr.write(f"DEBUG: Input token_endpoint parameter: {token_endpoint}\n")
-    sys.stderr.write(f"DEBUG: Input client_id: {client_id[:20]}... (truncated)\n")
+    sys.stderr.write(f"DEBUG: Input client_id: {client_id[:8] + '***' if client_id and len(client_id) > 8 else '***'} (masked)\n")
+    sys.stderr.write(f"DEBUG: Input client_secret: ***masked***\n")
     sys.stderr.write(f"DEBUG: Input port: {port}\n")
     
     # Extract base URL - prefer token_endpoint over auth_endpoint to avoid localhost confusion
@@ -353,8 +354,17 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
                     token_data['expires_at'] = int(time.time()) + token_data.get('expires_in', 3600)
                     with open(nextcloud_token_file, 'w') as f:
                         json.dump(token_data, f)
+                else:
+                    # Mask any potential secrets in error response
+                    error_text = response.text if hasattr(response, 'text') else str(response)
+                    error_text = re.sub(r'["\']?access_token["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'access_token=***masked***', error_text, flags=re.IGNORECASE)
+                    error_text = re.sub(r'["\']?refresh_token["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'refresh_token=***masked***', error_text, flags=re.IGNORECASE)
+                    error_text = re.sub(r'["\']?client_secret["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'client_secret=***masked***', error_text, flags=re.IGNORECASE)
+                    sys.stderr.write(f"DEBUG: Token refresh failed (status {response.status_code}): {error_text[:200]}\n")
+                    access_token = None
             except Exception as e:
                 # Refresh failed, need to re-authenticate
+                sys.stderr.write(f"DEBUG: Token refresh exception: {str(e)}\n")
                 access_token = None
     
     # If no valid token, start OAuth flow
@@ -486,7 +496,13 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
         
         response = requests.post(exchange_token_url, data=data)
         if response.status_code != 200:
-            sys.stderr.write(f"ERROR: Failed to get access token: {response.text}\n")
+            # Mask any potential secrets in error response
+            error_text = response.text
+            # Remove any tokens or secrets that might be in the error
+            error_text = re.sub(r'["\']?access_token["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'access_token=***masked***', error_text, flags=re.IGNORECASE)
+            error_text = re.sub(r'["\']?refresh_token["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'refresh_token=***masked***', error_text, flags=re.IGNORECASE)
+            error_text = re.sub(r'["\']?client_secret["\']?\s*[:=]\s*["\']?[^"\'\s]+["\']?', 'client_secret=***masked***', error_text, flags=re.IGNORECASE)
+            sys.stderr.write(f"ERROR: Failed to get access token: {error_text}\n")
             sys.exit(1)
         
         token_data = response.json()
@@ -558,7 +574,7 @@ def authenticate_nextcloud(server_url, client_id, client_secret, auth_endpoint=N
         sys.stderr.write(f"DEBUG: ===== Fetching Calendar List =====\n")
         sys.stderr.write(f"DEBUG: Using server_url: {server_url}\n")
         sys.stderr.write(f"DEBUG: Calendar API URL: {cal_api_url}\n")
-        sys.stderr.write(f"DEBUG: Request headers: Authorization=Bearer {access_token[:20]}... (truncated)\n")
+        sys.stderr.write(f"DEBUG: Request headers: Authorization=Bearer ***masked***\n")
         response = requests.get(cal_api_url, headers=headers)
         sys.stderr.write(f"DEBUG: Calendar API response status: {response.status_code}\n")
         if response.status_code != 200:

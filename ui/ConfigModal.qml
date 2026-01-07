@@ -246,9 +246,11 @@ Item {
                       googlePort
         
         console.log("DEBUG: Executing Google OAuth with parameters:")
-        console.log("  - Client ID:", googleClientId.substring(0, 20) + "...")
+        console.log("  - Client ID:", googleClientId ? (googleClientId.substring(0, 8) + "***") : "not set")
+        console.log("  - Client Secret:", googleClientSecret ? "***masked***" : "not set")
         console.log("  - Port:", googlePort)
-        console.log("  - Command:", command.substring(0, 100) + "...")
+        // Don't log the full command as it contains secrets
+        console.log("  - Command: [masked - contains secrets]")
         
         oauthExecutable.connectSource(command)
     }
@@ -288,9 +290,11 @@ Item {
         console.log("DEBUG: Executing Nextcloud OAuth with parameters:")
         console.log("  - Auth Endpoint:", nextcloudAuthEndpoint)
         console.log("  - Token Endpoint:", nextcloudTokenEndpoint)
-        console.log("  - Client ID:", nextcloudClientId.substring(0, 20) + "...")
+        console.log("  - Client ID:", nextcloudClientId ? (nextcloudClientId.substring(0, 8) + "***") : "not set")
+        console.log("  - Client Secret:", nextcloudClientSecret ? "***masked***" : "not set")
         console.log("  - Port:", nextcloudPort)
-        console.log("  - Command:", command.substring(0, 100) + "...")
+        // Don't log the full command as it contains secrets
+        console.log("  - Command: [masked - contains secrets]")
         
         oauthExecutable.connectSource(command)
     }
