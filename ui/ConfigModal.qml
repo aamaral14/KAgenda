@@ -44,11 +44,16 @@ Item {
     }
     
     // State management
-    property string currentState: "auth" // "auth", "nextcloudEndpoints", "authenticating", "selectCalendar", "configured"
+    property string currentState: "auth" // "auth", "googleCredentials", "nextcloudEndpoints", "authenticating", "selectCalendar", "configured"
     property string selectedProvider: ""
     property string authStatusText: ""
     property string redirectUri: "" // Stores the redirect URI with port for display
     property int nextcloudPort: -1 // Stores the port that will be used for Nextcloud OAuth callback
+    property int googlePort: -1 // Stores the port that will be used for Google OAuth callback
+
+    // Google-specific parameters (entered in the popup)
+    property string googleClientId: ""
+    property string googleClientSecret: ""
 
     // Nextcloud-specific parameters (entered in the popup)
     // Default values for debugging
@@ -94,7 +99,11 @@ Item {
     
     // Computed property to check if all required fields are filled
     property bool canSave: {
-        if (currentState === "nextcloudEndpoints") {
+        if (currentState === "googleCredentials") {
+            // All Google fields must be filled
+            return googleClientId.trim() !== "" && 
+                   googleClientSecret.trim() !== ""
+        } else if (currentState === "nextcloudEndpoints") {
             // All Nextcloud fields must be filled
             return nextcloudAuthEndpoint.trim() !== "" && 
                    nextcloudTokenEndpoint.trim() !== "" && 
@@ -146,6 +155,9 @@ Item {
         if (currentState === "nextcloudEndpoints" && nextcloudPort < 0) {
             console.log("State changed to nextcloudEndpoints, scanning for port...")
             findAvailablePort()
+        } else if (currentState === "googleCredentials" && googlePort < 0) {
+            console.log("State changed to googleCredentials, scanning for port...")
+            findAvailablePort()
         }
     }
     
@@ -188,8 +200,15 @@ Item {
             authStatusText = "Enter Nextcloud OAuth endpoints:"
             // Find an available port and update redirect URI
             findAvailablePort()
+        } else if (provider === "google") {
+            // For Google, first show credentials input fields
+            currentState = "googleCredentials"
+            selectedProvider = provider
+            authStatusText = "Enter Google OAuth credentials:"
+            // Find an available port and update redirect URI
+            findAvailablePort()
         } else {
-            // For Google, proceed directly to authentication
+            // Fallback (shouldn't happen)
             currentState = "authenticating"
             selectedProvider = provider
             authStatusText = "Opening browser for " + provider + " authentication..."
@@ -199,6 +218,39 @@ Item {
             
             oauthExecutable.connectSource("python3 '" + scriptPath + "' " + provider)
         }
+    }
+    
+    function executeGoogleOAuth() {
+        if (!googleClientId || !googleClientSecret) {
+            authStatusText = "Please enter both Client ID and Client Secret"
+            return
+        }
+        
+        if (googlePort < 0) {
+            authStatusText = "Port not available. Please try again."
+            findAvailablePort()
+            return
+        }
+        
+        currentState = "authenticating"
+        authStatusText = "Opening browser for Google authentication..."
+        
+        var homeDir = getHomeDir()
+        var scriptPath = homeDir + "/.local/share/plasma/plasmoids/com.github.kagenda/oauth-helper.py"
+        
+        // Pass Google credentials and port as arguments:
+        // provider client_id client_secret port
+        var command = "python3 '" + scriptPath + "' google '" +
+                      googleClientId + "' '" +
+                      googleClientSecret + "' " +
+                      googlePort
+        
+        console.log("DEBUG: Executing Google OAuth with parameters:")
+        console.log("  - Client ID:", googleClientId.substring(0, 20) + "...")
+        console.log("  - Port:", googlePort)
+        console.log("  - Command:", command.substring(0, 100) + "...")
+        
+        oauthExecutable.connectSource(command)
     }
     
     function executeNextcloudOAuth() {
@@ -557,17 +609,31 @@ Item {
                 var output = data.stdout || ""
                 var port = parseInt(output.trim())
                 if (!isNaN(port) && port > 0) {
-                    nextcloudPort = port
-                    redirectUri = "http://localhost:" + port + "/oauth-callback"
-                    console.log("Found available port:", port)
+                    // Set port based on current state
+                    if (currentState === "googleCredentials") {
+                        googlePort = port
+                        redirectUri = "http://localhost:" + port + "/"
+                    } else if (currentState === "nextcloudEndpoints") {
+                        nextcloudPort = port
+                        redirectUri = "http://localhost:" + port + "/oauth-callback"
+                    }
+                    console.log("Found available port:", port, "for state:", currentState)
                 } else {
                     console.log("Failed to find available port")
-                    nextcloudPort = -1
+                    if (currentState === "googleCredentials") {
+                        googlePort = -1
+                    } else if (currentState === "nextcloudEndpoints") {
+                        nextcloudPort = -1
+                    }
                     redirectUri = ""
                 }
             } else {
                 console.log("Port scanner error:", data.stderr)
-                nextcloudPort = -1
+                if (currentState === "googleCredentials") {
+                    googlePort = -1
+                } else if (currentState === "nextcloudEndpoints") {
+                    nextcloudPort = -1
+                }
                 redirectUri = ""
             }
             disconnectSource(sourceName)
@@ -765,6 +831,78 @@ Item {
                             enabled: currentState === "auth"
                             onClicked: {
                                 executeOAuth("nextcloud")
+                            }
+                        }
+                    }
+                    
+                    // Google credentials input fields
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        visible: currentState === "googleCredentials"
+                        
+                        // Display redirect URI with port
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            text: redirectUri ? "Redirect URI (register this in Google Cloud Console):" : "Finding available port..."
+                            color: "#88ccff"
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+                        
+                        // Make redirect URI selectable for copy/paste
+                        QQC2.TextField {
+                            Layout.fillWidth: true
+                            text: redirectUri || "Scanning ports..."
+                            readOnly: true
+                            selectByMouse: true
+                            font.family: redirectUri ? "monospace" : "default"
+                            color: redirectUri ? "#ffffff" : "#aaaaaa"
+                            background: Rectangle {
+                                color: "#1e1e1e"
+                                border.color: redirectUri ? "#555555" : "transparent"
+                                border.width: 1
+                                radius: 4
+                            }
+                        }
+                        
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            text: "Client ID:"
+                            color: "#ffffff"
+                        }
+                        
+                        QQC2.TextField {
+                            id: googleClientIdField
+                            Layout.fillWidth: true
+                            placeholderText: "Google OAuth Client ID from Google Cloud Console"
+                            text: googleClientId
+                            onTextChanged: googleClientId = text
+                            background: Rectangle {
+                                color: "#1e1e1e"
+                                border.color: "#555555"
+                                border.width: 1
+                                radius: 4
+                            }
+                        }
+                        
+                        PlasmaComponents.Label {
+                            text: "Client Secret:"
+                            color: "#ffffff"
+                        }
+                        
+                        QQC2.TextField {
+                            id: googleClientSecretField
+                            Layout.fillWidth: true
+                            echoMode: TextInput.Password
+                            placeholderText: "Google OAuth Client Secret from Google Cloud Console"
+                            text: googleClientSecret
+                            onTextChanged: googleClientSecret = text
+                            background: Rectangle {
+                                color: "#1e1e1e"
+                                border.color: "#555555"
+                                border.width: 1
+                                radius: 4
                             }
                         }
                     }
@@ -1118,6 +1256,9 @@ Item {
                             }
                         } else if (currentState === "selectCalendar") {
                             saveConfiguration()
+                        } else if (currentState === "googleCredentials") {
+                            // Validate and proceed with Google authentication
+                            executeGoogleOAuth()
                         } else if (currentState === "nextcloudEndpoints") {
                             // Validate and proceed with Nextcloud authentication
                             executeNextcloudOAuth()

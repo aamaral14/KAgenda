@@ -100,7 +100,7 @@ def find_free_port(preferred_port: int = 8080, max_offset: int = 20) -> int | No
         return port
     return None
 
-def authenticate_google():
+def authenticate_google(client_id=None, client_secret=None, port=None):
     """Run Google OAuth flow and save token"""
     if not GOOGLE_AVAILABLE:
         sys.stderr.write("ERROR: Google OAuth libraries not available. Install: sudo apt install python3-google-auth-oauthlib python3-google-api-python-client\n")
@@ -124,41 +124,83 @@ def authenticate_google():
                 creds = None
         
         if not creds or not creds.valid:
-            if not credentials_file.exists():
-                sys.stderr.write(f"ERROR: Place credentials.json in {credentials_file}\n")
-                sys.exit(1)
-            
-            try:
-                with open(credentials_file, 'r') as f:
-                    client_config = json.load(f)
-                    if 'installed' not in client_config:
-                        sys.stderr.write(f"ERROR: credentials.json must have 'installed' key. Current keys: {list(client_config.keys())}\n")
-                        sys.exit(1)
-            except json.JSONDecodeError as e:
-                sys.stderr.write(f"ERROR: credentials.json is not valid JSON: {e}\n")
-                sys.exit(1)
-            except Exception as e:
-                sys.stderr.write(f"ERROR: Cannot read credentials.json: {e}\n")
-                sys.exit(1)
-            
-            flow = InstalledAppFlow.from_client_secrets_file(str(credentials_file), SCOPES)
-            try:
-                # Find a free local port for the callback server (prefer 8080)
-                port = find_free_port(8080, 20)
-                if port is None:
-                    sys.stderr.write(
-                        "ERROR: Could not find a free local port for OAuth callback "
-                        "(tried ports 8080-8099 on localhost).\n"
-                    )
+            # Use provided credentials or try to read from file
+            if client_id and client_secret:
+                # Create credentials dict from provided values
+                client_config = {
+                    "installed": {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                        "redirect_uris": ["http://localhost"]
+                    }
+                }
+                sys.stderr.write("DEBUG: Using provided Google OAuth credentials\n")
+            else:
+                # Fallback to credentials file
+                if not credentials_file.exists():
+                    sys.stderr.write(f"ERROR: Either provide client_id and client_secret as arguments, or place credentials.json in {credentials_file}\n")
                     sys.exit(1)
                 
+                try:
+                    with open(credentials_file, 'r') as f:
+                        client_config = json.load(f)
+                        if 'installed' not in client_config:
+                            sys.stderr.write(f"ERROR: credentials.json must have 'installed' key. Current keys: {list(client_config.keys())}\n")
+                            sys.exit(1)
+                except json.JSONDecodeError as e:
+                    sys.stderr.write(f"ERROR: credentials.json is not valid JSON: {e}\n")
+                    sys.exit(1)
+                except Exception as e:
+                    sys.stderr.write(f"ERROR: Cannot read credentials.json: {e}\n")
+                    sys.exit(1)
+            
+            # Create a temporary credentials file if using provided credentials
+            temp_creds_file = None
+            if client_id and client_secret:
+                import tempfile
+                temp_creds_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+                json.dump(client_config, temp_creds_file)
+                temp_creds_file.close()
+                credentials_path = temp_creds_file.name
+            else:
+                credentials_path = str(credentials_file)
+            
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+                
+                # Use provided port or find a free one
+                if port:
+                    oauth_port = port
+                else:
+                    oauth_port = find_free_port(8080, 20)
+                    if oauth_port is None:
+                        sys.stderr.write(
+                            "ERROR: Could not find a free local port for OAuth callback "
+                            "(tried ports 8080-8099 on localhost).\n"
+                        )
+                        if temp_creds_file:
+                            os.unlink(temp_creds_file.name)
+                        sys.exit(1)
+                
                 # Use the found port and report it
-                redirect_uri = f"http://localhost:{port}/"
+                redirect_uri = f"http://localhost:{oauth_port}/"
                 sys.stderr.write(f"Using redirect URI: {redirect_uri}\n")
                 sys.stderr.write("Make sure this URI is registered in your Google OAuth app settings.\n")
                 
-                creds = flow.run_local_server(port=port, open_browser=True)
+                creds = flow.run_local_server(port=oauth_port, open_browser=True)
+                
+                # Clean up temporary file if created
+                if temp_creds_file:
+                    os.unlink(temp_creds_file.name)
             except Exception as e:
+                if temp_creds_file:
+                    try:
+                        os.unlink(temp_creds_file.name)
+                    except:
+                        pass
                 error_msg = str(e)
                 if "access_denied" in error_msg or "blocked" in error_msg.lower():
                     sys.stderr.write(f"ERROR: Authorization blocked. Possible causes:\n")
@@ -707,7 +749,23 @@ def authenticate():
         provider = 'google'
     
     if provider == 'google':
-        authenticate_google()
+        # Check if credentials are provided as command line arguments
+        # Format: python3 oauth-helper.py google [client_id] [client_secret] [port]
+        client_id = None
+        client_secret = None
+        port = None
+        
+        if len(sys.argv) >= 3:
+            client_id = sys.argv[2]
+        if len(sys.argv) >= 4:
+            client_secret = sys.argv[3]
+        if len(sys.argv) >= 5:
+            try:
+                port = int(sys.argv[4])
+            except ValueError:
+                sys.stderr.write(f"WARNING: Invalid port number: {sys.argv[4]}, will find available port\n")
+        
+        authenticate_google(client_id=client_id, client_secret=client_secret, port=port)
     elif provider == 'nextcloud':
         # Check if endpoints and credentials are provided as command-line arguments
         auth_endpoint = None
