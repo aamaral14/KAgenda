@@ -396,7 +396,8 @@ Item {
         }
         
         // Update authentication status
-        checkAuthenticationStatus()
+        // Directly set isAuthenticated to false since we just cleared everything
+        isAuthenticated = false
         
         // Reset state
         currentState = "auth"
