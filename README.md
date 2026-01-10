@@ -1,22 +1,25 @@
 # KAgenda
 
-A KDE Plasma widget that displays calendar events from Google Calendar or Nextcloud Calendar.
+A KDE Plasma widget that displays calendar events and manages todo tasks from Google Calendar or Nextcloud Calendar.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N41RQDPR)
 
 ## Introduction
 
-KAgenda is a modern, lightweight widget for KDE Plasma 6 that brings your calendar events directly to your desktop. Stay organized and never miss an important event with a beautiful, integrated calendar view that shows your upcoming events at a glance.
+KAgenda is a modern, lightweight widget for KDE Plasma 6 that brings your calendar events and todo tasks directly to your desktop. Stay organized and never miss an important event or task with a beautiful, integrated calendar and task view that shows your upcoming events and pending tasks at a glance.
 
 **Features:**
 - Support for Google Calendar and Nextcloud Calendar
+- Support for Google Tasks (todos)
 - Configurable event display range - choose how many days into the future to fetch and display events (1-365 days)
 - Seamless OAuth 2.0 authentication
-- Support for multiple calendars
-- Automatic event refresh on startup
+- Support for multiple calendars and task lists
+- Automatic event and task refresh on startup
+- Create, edit, complete, and delete todo tasks
 - All configuration through the UI (no JSON files needed)
 - Clean, native Plasma 6 design
 - Easy configuration through the widget's settings interface
+- Tabbed interface to switch between Events and Todos
 
 ## Compatibility
 
@@ -26,17 +29,17 @@ KAgenda is a modern, lightweight widget for KDE Plasma 6 that brings your calend
 
 Before using the widget, install the required Python packages:
 
-### For Google Calendar (On Debian/Ubuntu):
+### For Google Calendar and Tasks (On Debian/Ubuntu):
 ```bash
 sudo apt install python3-google-auth-oauthlib python3-google-api-python-client python3-google-auth python3-google-auth-httplib2
 ```
 
-### For Google Calendar (On Fedora/RHEL):
+### For Google Calendar and Tasks (On Fedora/RHEL):
 ```bash
 sudo dnf install python3-google-auth-oauthlib python3-google-api-python-client python3-google-auth python3-google-auth-httplib2
 ```
 
-### For Google Calendar (On Arch Linux):
+### For Google Calendar and Tasks (On Arch Linux):
 ```bash
 sudo pacman -S python-google-auth-oauthlib python-google-api-python-client python-google-auth python-google-auth-httplib2
 ```
@@ -126,15 +129,24 @@ The widget supports two calendar providers: **Google Calendar** and **Nextcloud 
 - For example, set it to 7 to see events for the next week, or 30 to see events for the next month
 - The configuration is saved automatically when you click "Save" and persists across reboots
 
-## Usage
+## Todo Tasks
 
-Once configured, the widget will:
-- Display events from your selected calendar (Google or Nextcloud)
-- Show events for the configured number of days ahead (you set this in the configuration dialog)
-- Automatically refresh events on startup
-- Automatically refresh when the access token is valid
-- Allow you to change the calendar selection and event display range through the configuration dialog
-- All settings (credentials, calendar selection, event display range) persist across reboots
+KAgenda now includes full support for managing todo tasks alongside calendar events.
+
+### Features:
+- **View Tasks:** Switch to the "Todos" tab to see your task lists and tasks
+- **Task Lists:** Select different task lists from the dropdown
+- **Create Tasks:** Click "Add Todo" to create a new task
+- **Complete Tasks:** Check/uncheck the checkbox to mark tasks as completed
+- **Edit Tasks:** Click "Edit" to modify task details (currently toggles completion)
+- **Delete Tasks:** Click "Delete" to remove tasks
+- **Automatic Sync:** Tasks sync automatically with Google Tasks
+
+### Notes:
+- Todo functionality is currently only available for Google Calendar users
+- Tasks are organized in task lists (similar to calendars)
+- Completed tasks are visually dimmed but remain visible
+- All task operations sync immediately with Google Tasks
 
 ## Troubleshooting
 

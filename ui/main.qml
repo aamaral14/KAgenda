@@ -69,7 +69,8 @@ PlasmoidItem {
     
     onCfg_accessTokenChanged: {
         if (cfg_calendarId && cfg_accessToken) {
-            refreshTimer.restart()
+            refreshEvents()
+            refreshTodos()
         }
     }
     
@@ -82,6 +83,8 @@ PlasmoidItem {
     property string statusText: ""
     property var calendarModel: ListModel { id: calendarModel }
     property var calendarListModel: ListModel { id: calendarListModel }
+    property var todoModel: ListModel { id: todoModel }
+    property var todoListModel: ListModel { id: todoListModel }
     
     // Use cfg_ properties for configuration
     property string accessToken: cfg_accessToken
@@ -642,6 +645,198 @@ PlasmoidItem {
         }
     }
     
+    function refreshTodos() {
+        var token = cfg_accessToken || ""
+        var provider = cfg_provider || ""
+        
+        if (!token || provider !== "google") {
+            // For now, only support Google Tasks
+            return
+        }
+        
+        statusText = "Loading todos..."
+        
+        var url = "https://www.googleapis.com/tasks/v1/users/@me/lists"
+        var request = new XMLHttpRequest()
+        
+        request.open("GET", url)
+        request.setRequestHeader("Authorization", "Bearer " + token)
+        
+        request.onreadystatechange = function() {
+            if (request.readyState === XMLHttpRequest.DONE) {
+                if (request.status === 200) {
+                    try {
+                        var response = JSON.parse(request.responseText)
+                        todoListModel.clear()
+                        
+                        var taskLists = response.items || []
+                        for (var i = 0; i < taskLists.length; i++) {
+                            var taskList = taskLists[i]
+                            todoListModel.append({
+                                id: taskList.id,
+                                title: taskList.title
+                            })
+                        }
+                        
+                        // Load tasks from the first task list if available
+                        if (todoListModel.count > 0) {
+                            loadTasksFromList(todoListModel.get(0).id)
+                        }
+                        
+                        statusText = "Todos loaded"
+                    } catch(e) {
+                        console.log("Error parsing todo lists:", e)
+                        statusText = "Error parsing todos: " + e.toString()
+                    }
+                } else {
+                    console.log("Error loading todo lists:", request.status)
+                    statusText = "Error loading todos: " + request.status
+                }
+            }
+        }
+        
+        request.send()
+    }
+    
+    function loadTasksFromList(taskListId) {
+        var token = cfg_accessToken || ""
+        
+        if (!token) return
+        
+        var url = "https://www.googleapis.com/tasks/v1/lists/" + taskListId + "/tasks"
+        var request = new XMLHttpRequest()
+        
+        request.open("GET", url)
+        request.setRequestHeader("Authorization", "Bearer " + token)
+        
+        request.onreadystatechange = function() {
+            if (request.readyState === XMLHttpRequest.DONE) {
+                if (request.status === 200) {
+                    try {
+                        var response = JSON.parse(request.responseText)
+                        todoModel.clear()
+                        
+                        var tasks = response.items || []
+                        for (var i = 0; i < tasks.length; i++) {
+                            var task = tasks[i]
+                            todoModel.append({
+                                id: task.id,
+                                title: task.title,
+                                notes: task.notes || "",
+                                completed: task.status === "completed",
+                                due: task.due || ""
+                            })
+                        }
+                        
+                        statusText = "Tasks loaded"
+                    } catch(e) {
+                        console.log("Error parsing tasks:", e)
+                        statusText = "Error parsing tasks: " + e.toString()
+                    }
+                } else {
+                    console.log("Error loading tasks:", request.status)
+                    statusText = "Error loading tasks: " + request.status
+                }
+            }
+        }
+        
+        request.send()
+    }
+    
+    function createTodo(title, notes, taskListId) {
+        var token = cfg_accessToken || ""
+        
+        if (!token || !taskListId) return
+        
+        var url = "https://www.googleapis.com/tasks/v1/lists/" + taskListId + "/tasks"
+        var request = new XMLHttpRequest()
+        
+        request.open("POST", url)
+        request.setRequestHeader("Authorization", "Bearer " + token)
+        request.setRequestHeader("Content-Type", "application/json")
+        
+        var taskData = {
+            title: title,
+            notes: notes || ""
+        }
+        
+        request.onreadystatechange = function() {
+            if (request.readyState === XMLHttpRequest.DONE) {
+                if (request.status === 200) {
+                    // Refresh todos after creation
+                    loadTasksFromList(taskListId)
+                    statusText = "Todo created"
+                } else {
+                    console.log("Error creating todo:", request.status)
+                    statusText = "Error creating todo: " + request.status
+                }
+            }
+        }
+        
+        request.send(JSON.stringify(taskData))
+    }
+    
+    function updateTodo(taskListId, taskId, title, notes, completed) {
+        var token = cfg_accessToken || ""
+        
+        if (!token || !taskListId || !taskId) return
+        
+        var url = "https://www.googleapis.com/tasks/v1/lists/" + taskListId + "/tasks/" + taskId
+        var request = new XMLHttpRequest()
+        
+        request.open("PUT", url)
+        request.setRequestHeader("Authorization", "Bearer " + token)
+        request.setRequestHeader("Content-Type", "application/json")
+        
+        var taskData = {
+            title: title,
+            notes: notes || "",
+            status: completed ? "completed" : "needsAction"
+        }
+        
+        request.onreadystatechange = function() {
+            if (request.readyState === XMLHttpRequest.DONE) {
+                if (request.status === 200) {
+                    // Refresh todos after update
+                    loadTasksFromList(taskListId)
+                    statusText = "Todo updated"
+                } else {
+                    console.log("Error updating todo:", request.status)
+                    statusText = "Error updating todo: " + request.status
+                }
+            }
+        }
+        
+        request.send(JSON.stringify(taskData))
+    }
+    
+    function deleteTodo(taskListId, taskId) {
+        var token = cfg_accessToken || ""
+        
+        if (!token || !taskListId || !taskId) return
+        
+        var url = "https://www.googleapis.com/tasks/v1/lists/" + taskListId + "/tasks/" + taskId
+        var request = new XMLHttpRequest()
+        
+        request.open("DELETE", url)
+        request.setRequestHeader("Authorization", "Bearer " + token)
+        
+        request.onreadystatechange = function() {
+            if (request.readyState === XMLHttpRequest.DONE) {
+                if (request.status === 204) {
+                    // Refresh todos after deletion
+                    loadTasksFromList(taskListId)
+                    statusText = "Todo deleted"
+                } else {
+                    console.log("Error deleting todo:", request.status)
+                    statusText = "Error deleting todo: " + request.status
+                }
+            }
+        }
+        
+        request.send()
+    }
+    
     fullRepresentation: Item {
         Layout.preferredWidth: 500
         Layout.preferredHeight: 550
@@ -666,6 +861,20 @@ PlasmoidItem {
                 
                 Item { Layout.fillWidth: true }
                 
+                QQC2.TabBar {
+                    id: tabBar
+                    Layout.alignment: Qt.AlignVCenter
+                    
+                    QQC2.TabButton {
+                        text: "Events"
+                        onClicked: stackLayout.currentIndex = 0
+                    }
+                    QQC2.TabButton {
+                        text: "Todos"
+                        onClicked: stackLayout.currentIndex = 1
+                    }
+                }
+                
                 Kirigami.Icon {
                     source: "configure"
                     width: 22
@@ -688,51 +897,178 @@ PlasmoidItem {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: refreshEvents()
+                        onClicked: {
+                            if (stackLayout.currentIndex === 0) {
+                                refreshEvents()
+                            } else {
+                                refreshTodos()
+                            }
+                        }
                     }
                 }
             }
             
-            ListView {
-                id: eventsList
+            StackLayout {
+                id: stackLayout
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                model: calendarModel
-                spacing: 4
+                currentIndex: 0
                 
-                delegate: Item {
-                    width: eventsList.width
-                    height: eventContent.height + 8
-                    Column {
-                        id: eventContent
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.margins: 4
+                // Events tab
+                ListView {
+                    id: eventsList
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    model: calendarModel
+                    spacing: 4
+                    
+                    delegate: Item {
+                        width: eventsList.width
+                        height: eventContent.height + 8
+                        Column {
+                            id: eventContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.margins: 4
+                            spacing: 4
+                            PlasmaComponents.Label {
+                                width: parent.width
+                                text: model.title || ""
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                            PlasmaComponents.Label {
+                                width: parent.width
+                                text: (model.date || "") + " " + (model.time || "")
+                                color: "#808080"
+                                wrapMode: Text.WordWrap
+                            }
+                            PlasmaComponents.Label {
+                                width: parent.width
+                                visible: model.location !== ""
+                                text: model.location || ""
+                                color: "#808080"
+                                font.pointSize: 9
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+                
+                // Todos tab
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 8
+                    
+                    // Task list selector
+                    QQC2.ComboBox {
+                        id: taskListCombo
+                        Layout.fillWidth: true
+                        model: todoListModel
+                        textRole: "title"
+                        valueRole: "id"
+                        onCurrentIndexChanged: {
+                            if (currentIndex >= 0 && todoListModel.count > currentIndex) {
+                                var taskListId = todoListModel.get(currentIndex).id
+                                loadTasksFromList(taskListId)
+                            }
+                        }
+                    }
+                    
+                    // Add new todo button
+                    QQC2.Button {
+                        text: "Add Todo"
+                        Layout.fillWidth: true
+                        onClicked: {
+                            if (taskListCombo.currentIndex >= 0) {
+                                var taskListId = todoListModel.get(taskListCombo.currentIndex).id
+                                createTodo("New Todo", "", taskListId)
+                            }
+                        }
+                    }
+                    
+                    // Todos list
+                    ListView {
+                        id: todosList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        model: todoModel
                         spacing: 4
-                        PlasmaComponents.Label {
-                            width: parent.width
-                            text: model.title || ""
-                            font.bold: true
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                        }
-                        PlasmaComponents.Label {
-                            width: parent.width
-                            text: (model.date || "") + " " + (model.time || "")
-                            color: "#808080"
-                            wrapMode: Text.WordWrap
-                        }
-                        PlasmaComponents.Label {
-                            width: parent.width
-                            visible: model.location !== ""
-                            text: model.location || ""
-                            color: "#808080"
-                            font.pointSize: 9
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 2
-                            elide: Text.ElideRight
+                        
+                        delegate: Item {
+                            width: todosList.width
+                            height: todoContent.height + 8
+                            Column {
+                                id: todoContent
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: 4
+                                spacing: 4
+                                
+                                RowLayout {
+                                    width: parent.width
+                                    spacing: 8
+                                    
+                                    QQC2.CheckBox {
+                                        checked: model.completed
+                                        onClicked: {
+                                            if (taskListCombo.currentIndex >= 0) {
+                                                var taskListId = todoListModel.get(taskListCombo.currentIndex).id
+                                                updateTodo(taskListId, model.id, model.title, model.notes, checked)
+                                            }
+                                        }
+                                    }
+                                    
+                                    PlasmaComponents.Label {
+                                        Layout.fillWidth: true
+                                        text: model.title || ""
+                                        font.bold: !model.completed
+                                        wrapMode: Text.WordWrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                        opacity: model.completed ? 0.5 : 1.0
+                                    }
+                                    
+                                    QQC2.Button {
+                                        text: "Edit"
+                                        onClicked: {
+                                            // For now, just mark as completed/uncompleted
+                                            if (taskListCombo.currentIndex >= 0) {
+                                                var taskListId = todoListModel.get(taskListCombo.currentIndex).id
+                                                updateTodo(taskListId, model.id, model.title, model.notes, !model.completed)
+                                            }
+                                        }
+                                    }
+                                    
+                                    QQC2.Button {
+                                        text: "Delete"
+                                        onClicked: {
+                                            if (taskListCombo.currentIndex >= 0) {
+                                                var taskListId = todoListModel.get(taskListCombo.currentIndex).id
+                                                deleteTodo(taskListId, model.id)
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                PlasmaComponents.Label {
+                                    width: parent.width
+                                    visible: model.notes !== ""
+                                    text: model.notes || ""
+                                    color: "#808080"
+                                    font.pointSize: 9
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
                 }
@@ -869,6 +1205,7 @@ PlasmoidItem {
                 console.log("startupTimer: Both token and calendar found, refreshing events...")
                 statusText = "Loading events..."
                 refreshEvents()
+                refreshTodos()
             } else if (hasToken && !hasCalendar) {
                 // We have token but no calendar selected - open config to select calendar
                 console.log("startupTimer: Token found but no calendar selected")
@@ -905,6 +1242,7 @@ PlasmoidItem {
                 console.log("tokenLoadedTimer: Both token and calendar found, refreshing events...")
                 statusText = "Loading events..."
                 refreshEvents()
+                refreshTodos()
             } else if (hasToken && !hasCalendar) {
                 console.log("tokenLoadedTimer: Token loaded but no calendar selected")
                 statusText = "Please select a calendar"
@@ -953,6 +1291,7 @@ PlasmoidItem {
         onTriggered: {
             if (cfg_accessToken && cfg_calendarId) {
                 refreshEvents()
+                refreshTodos()
             }
         }
     }
