@@ -121,6 +121,39 @@ PlasmoidItem {
         return "/home/" + (pathParts.length > 2 ? pathParts[2] : "user")
     }
     
+    // Event dates and times follow the system configuration: the short date
+    // format of the current region, and the short time format, which is
+    // 12-hour with AM/PM where the locale uses it and 24-hour otherwise.
+    // Plasma's own digital clock applet formats its date and time the same way.
+    function formatEventDate(date) {
+        return Qt.formatDate(date, Qt.locale(), Locale.ShortFormat)
+    }
+    
+    function formatEventTime(date) {
+        return Qt.formatTime(date, Qt.locale().timeFormat(Locale.ShortFormat))
+    }
+    
+    function formatEventTimeRange(startDate, endDate) {
+        if (endDate && endDate.getTime() !== startDate.getTime()) {
+            return formatEventTime(startDate) + " - " + formatEventTime(endDate)
+        }
+        return formatEventTime(startDate)
+    }
+    
+    // All-day events carry no time zone, so read their calendar date
+    // (YYYY-MM-DD or YYYYMMDD) into a local date: parsing it as UTC midnight
+    // would display the previous day in time zones west of UTC.
+    function parseDateOnly(value) {
+        var match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+        if (!match) {
+            match = /^(\d{4})(\d{2})(\d{2})$/.exec(value)
+        }
+        if (!match) {
+            return null
+        }
+        return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]))
+    }
+    
     function executeOAuthScript() {
         root.statusText = "Executing OAuth helper..."
         
@@ -358,20 +391,31 @@ PlasmoidItem {
                         
                         if (!start) continue
                         
-                        var startDate = new Date(start)
-                        var endDate = end ? new Date(end) : startDate
-                        var dateStr = startDate.toISOString().split('T')[0]
-                        var timeStr = ""
-                        
                         // Check if it's an all-day event (date only, no time)
                         var isAllDay = !start.includes('T') || (provider === "nextcloud" && !start.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/))
                         
-                        if (!isAllDay && startDate) {
-                            var startTime = startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                            var endTime = endDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                            timeStr = startTime + " - " + endTime
+                        var startDate, endDate
+                        if (isAllDay) {
+                            // All-day events have no time zone: use the calendar
+                            // date as written instead of parsing it as UTC.
+                            startDate = parseDateOnly(start)
+                            endDate = startDate
                         } else {
+                            startDate = new Date(start)
+                            endDate = end ? new Date(end) : startDate
+                            if (isNaN(endDate.getTime())) {
+                                endDate = startDate
+                            }
+                        }
+                        if (!startDate || isNaN(startDate.getTime())) continue
+                        
+                        var dateStr = formatEventDate(startDate)
+                        var timeStr = ""
+                        
+                        if (isAllDay) {
                             timeStr = "All day"
+                        } else {
+                            timeStr = formatEventTimeRange(startDate, endDate)
                         }
                         
                         calendarModel.append({
@@ -484,16 +528,14 @@ PlasmoidItem {
                             continue
                         }
                         
-                        var dateStr = startDate.toISOString().split('T')[0]
+                        var dateStr = formatEventDate(startDate)
                         var timeStr = ""
                         var isAllDay = start.length === 8
                         
-                        if (!isAllDay && startDate) {
-                            var startTime = startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                            var endTime = endDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: false})
-                            timeStr = startTime + " - " + endTime
-                        } else {
+                        if (isAllDay) {
                             timeStr = "All day"
+                        } else {
+                            timeStr = formatEventTimeRange(startDate, endDate)
                         }
                         
                         calendarModel.append({
